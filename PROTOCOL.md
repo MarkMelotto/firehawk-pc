@@ -1,6 +1,6 @@
 # Line 6 Firehawk FX — Bluetooth protocol
 
-Reconstructed from `com.line6.firehawk` (`firehawk-s25.apk`) with Ghidra 11.3.2:
+Reverse-engineered with [REA](https://github.com/morluto/rea) and Ghidra from `com.line6.firehawk` (`firehawk-s25.apk`) with Ghidra 11.3.2:
 - `lib/armeabi-v7a/libAmplifiRemoteNdk.so` is the original Line 6 library. It is stripped but keeps its C++ dynamic symbols.
 - `lib/arm64-v8a/libAmplifiRemoteNdk.so` is a third-party "S25" shim. See the end of this file.
 
@@ -11,6 +11,10 @@ Validated on a real **Firehawk 1500** (firmware 0x01300000, symbol table = `defa
 - The stream peer only takes new credit from packets flagged DATA or WND (0x04/0x08), never from keepalives. Send a WND packet as received data is consumed, or the peer stops after 4 KB.
 - Firehawk = the "AEON" family (`IsAeonDevice`: products 0x200004/0x200006). The slot map is fx1–fx4 → FX1–FX4, reverb → **FX5**, looper → Looper, with `FX5Enable` and friends on GuitarProc.
 - Turning the amp's physical knobs produced no param events. Preset changes on the amp send editor event 3 `{int presetIdx, int 0}`, followed by event 6 (FBV status).
+- Floorboard / footswitch on-off changes arrive unsolicited as editor event 4 `{GuitarProc, FXnEnable, float 0.0|1.0}` (reverb = FX5Enable). No registration is needed.
+- `LoadDspModel` (cmd 8) swaps models live: amp (e.g. Tread Dual → HD Blackface Double Vib) and FX slots (Screamer → HD Facial Fuzz). The amp then loads that model's default parameters.
+- Cab and mic are one symbol: `<cab>` + `57OnAxis | 57OffAxis | 421 | U67` (mic index 0–3, `CabModelAndMicToStudioCabSymbol`).
+- Picker groups come from the app's `assets/*Catalog.json` (AmpCatalog: Clean / American / British / High Gain; FXCatalog: Drives & Dynamics / Mods / Delays / Filters, Synths, and Pitch; Cab / Reverb / Wah catalogs).
 
 ## Layer 0 — Bluetooth Classic SPP
 
