@@ -96,8 +96,6 @@ def glyph(c: "tk.Canvas", family: str, cx: int, cy: int, s: int, color: str, dim
         line(cx + h, cy + h // 3, cx - h, cy + h // 3, arrow="last")
     else:                                               # empty slot
         c.create_text(cx, cy, text="+", fill="#6a6a6a", font=("Segoe UI", s // 3))
-    if family.endswith("_hd"):
-        c.create_text(cx + h - 2, cy + h, text="HD", fill=col, anchor="se", font=("Segoe UI", max(7, s // 7), "bold"))
 
 
 def _wave(c, cx, cy, h, col, w, fn) -> None:

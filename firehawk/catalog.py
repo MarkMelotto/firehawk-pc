@@ -80,6 +80,16 @@ class Model:
     def look(self) -> BlockLook:
         return LOOKS.get(self.family, LOOKS["empty"])
 
+    @property
+    def hd(self) -> bool:
+        """HD model (ProcessorModel.isHD: HD amps, drives, delays, synths, reverbs)."""
+        return self.family.endswith("_hd")
+
+    @property
+    def label(self) -> str:
+        """Name without a trailing ' HD' (the HD badge says it)."""
+        return self.name[:-3] if self.hd and self.name.endswith(" HD") else self.name
+
 
 # cab + mic are one device symbol (L6A36Preset::CabModelAndMicToStudioCabSymbol)
 MICS = ["57OnAxis", "57OffAxis", "421", "U67"]

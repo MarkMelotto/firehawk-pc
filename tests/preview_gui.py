@@ -30,6 +30,7 @@ class DemoApp(gui.App):
                 n = names[i % len(names)].encode(); return struct.pack("<iI", 0, len(n) + 1) + n + b"\0"
             if mode == "editor" and cmd == 9:
                 s, p = struct.unpack("<II", a)
+                if dev.names[s] == "Tuner": dev.params.setdefault((s, p), (3, 0))      # tuner off at start
                 if (s, p) not in dev.params: dev.params[(s, p)] = (4, struct.unpack("<I", struct.pack("<f", rnd.random()))[0])
             return orig(mode, cmd, a, src, dst)
         dev._rpc = rpc
@@ -43,7 +44,7 @@ if __name__ == "__main__":
     if "--auto" in sys.argv:
         app.after(500, app.connect)
     if "--picker" in sys.argv:          # screenshot helper: open the model picker on FX2
-        app.after(9000, lambda: (app.select(next(b for b in app.blocks if b.group == "fx2")),
+        app.after(9000, lambda: (app.select(next(b for b in app.blocks if b.group == ("amp" if "--amp" in sys.argv else "fx2"))),
                                  app.after(1500, app.open_picker)))
     if "--tuner" in sys.argv:           # screenshot helper: tuner window with a slightly flat E
         app.after(7000, app.tuner_on)

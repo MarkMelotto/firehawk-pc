@@ -51,6 +51,17 @@ def cent_segments(cents: float) -> tuple:
     return next((seg for lo, hi, seg in CENT_SEGMENTS if lo <= cents < hi), ())
 
 
+HD_TAN = "#b29d80"     # fh_badge_hd.png
+
+
+def hd_badge(c: tk.Canvas, right: float, top: float, dim: bool = False, scale: float = 1.0):
+    """The app's 'HD' badge: tan tag with white letters, anchored at its top-right corner."""
+    w, h = 22 * scale, 13 * scale
+    c.create_rectangle(right - w, top, right, top + h, fill="#5a5040" if dim else HD_TAN, width=0)
+    c.create_text(right - w / 2, top + h / 2 + 0.5, text="HD", fill="#bbbbbb" if dim else "#ffffff",
+                  font=(FONT, max(6, int(7 * scale)), "bold"))
+
+
 class TunerWindow(tk.Toplevel):
     """The app's tuner screen: '>' note '<' over an 11-segment bar (tuner_fragment.xml / TunerView)."""
     DARK, MID, GREEN, RED = "#333333", "#777777", "#00ff00", "#ff0000"   # tuner_* colours
@@ -138,8 +149,12 @@ class Block:
         return LOOKS.get(self.family, LOOKS["empty"])
 
     @property
+    def hd(self) -> bool:
+        return self.model.hd if self.model else self.model_sid.startswith("HD_")
+
+    @property
     def title(self) -> str:
-        return self.model.name if self.model else (pretty(self.model_sid) if self.model_sid else self.look.label)
+        return self.model.label if self.model else (pretty(self.model_sid) if self.model_sid else self.look.label)
 
 
 class Worker(threading.Thread):
@@ -278,7 +293,9 @@ class App(tk.Tk):
         self.lbl_kind = tk.Label(ed, text="", fg=SUB, bg=BG, font=(FONT, 10, "bold"))
         self.lbl_kind.pack(side="left")
         self.lbl_model = tk.Label(ed, text="", fg=TEXT, bg=BG, font=(FONT, 15, "bold"))
-        self.lbl_model.pack(side="left", padx=10)
+        self.lbl_model.pack(side="left", padx=(10, 0))
+        self.cv_hd = tk.Canvas(ed, width=34, height=20, bg=BG, highlightthickness=0)
+        self.cv_hd.pack(side="left", padx=(6, 8))
         self.lbl_model.bind("<Button-1>", lambda e: self.open_picker())
         self.lbl_change = tk.Label(ed, text="", fg="#7fa7ff", bg=BG, font=(FONT, 9, "bold"), cursor="hand2")
         self.lbl_change.pack(side="left")
@@ -323,6 +340,8 @@ class App(tk.Tk):
             sel = b is self.sel
             icons.tile(c, x, 8, TILE_W, TILE_H, sel)
             icons.glyph(c, b.family, x + TILE_W // 2, 8 + TILE_H // 2, ICON_W, b.look.color, dim=not b.enabled)
+            if b.hd:
+                hd_badge(c, x + TILE_W - 6, 13, dim=not b.enabled)
             label = b.title if len(b.title) <= 12 else b.title[:11] + "…"
             c.create_text(x + TILE_W // 2, 8 + TILE_H + 12, text=label, fill=TEXT if b.enabled else "#666",
                           font=(FONT, 8, "bold" if sel else "normal"))
@@ -348,6 +367,7 @@ class App(tk.Tk):
         if not b:
             self.lbl_kind.config(text="")
             self.lbl_model.config(text="")
+            self.cv_hd.delete("all")
             self.lbl_change.config(text="")
             self.btn_power.delete("all")
             return
@@ -356,6 +376,9 @@ class App(tk.Tk):
         if b.group == "cab" and b.model:
             title = b.model.name                         # mic is shown as its own row
         self.lbl_model.config(text=title, cursor="hand2" if self._can_pick(b) else "")
+        self.cv_hd.delete("all")
+        if b.hd:
+            hd_badge(self.cv_hd, 30, 2, scale=1.2)
         self.lbl_change.config(text="CHANGE MODEL ▾" if self._can_pick(b) else "")
         self.btn_power.delete("all")
         if b.group != "amp":
@@ -482,8 +505,9 @@ class App(tk.Tk):
             rows.append((group.upper(), None))
             for i in avail:
                 m = self.cat.get(i)
-                name = m.name if m else pretty(i)
-                rows.append((("● " if i == base else "   ") + name, i))
+                name = m.label if m else pretty(i)
+                hd = m.hd if m else i.startswith("HD_")
+                rows.append((("● " if i == base else "   ") + name + ("    HD" if hd else ""), i))
 
         win = tk.Toplevel(self)
         win.title(f"Choose {b.look.label}")

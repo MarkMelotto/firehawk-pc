@@ -4,6 +4,8 @@
 
 - **GET ALL EFFECTS…**: one click downloads the official Line 6 app and installs the effect list, so every block
   can change model. You can still pick an `.apk` (or `.xapk`) you downloaded yourself.
+- HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
+  header and the model picker.
 
 ## 1.1.0 — 2026-10-11
 

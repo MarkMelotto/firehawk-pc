@@ -1,5 +1,5 @@
 """Display formatting checks (no hardware or model data needed)."""
-from firehawk.catalog import Param, fmt, note_name
+from firehawk.catalog import Model, Param, fmt, note_name
 
 
 def main():
@@ -9,6 +9,8 @@ def main():
     assert fmt(mod, 1) == "Whole" and fmt(mod, 6) == "1/4" and fmt(mod, 14) == "1/32"
     assert note_name("delay", 99) == "99"
     assert fmt(Param("Drive", "Drive", 1, 0, 1, 0.5), 0.5) == "5.0"
+    assert Model("DynamicDelay", "Dynamic Delay HD", "delay_hd").label == "Dynamic Delay"
+    assert Model("HD_AmpHiway100", "Hiway 100", "amp_hd").hd and not Model("Tape", "Tape Echo", "delay").hd
     print("catalog OK")
 
 
