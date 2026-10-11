@@ -41,4 +41,7 @@ if __name__ == "__main__":
     app.port.set("DEMO")
     if "--auto" in sys.argv:
         app.after(500, app.connect)
+    if "--picker" in sys.argv:          # screenshot helper: open the model picker on FX2
+        app.after(9000, lambda: (app.select(next(b for b in app.blocks if b.group == "fx2")),
+                                 app.after(1500, app.open_picker)))
     app.mainloop()

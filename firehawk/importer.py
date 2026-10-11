@@ -37,6 +37,9 @@ def import_apk(apk: "str | Path", dest: "Path | None" = None) -> int:
             raise ValueError("This APK doesn't contain Firehawk model files - is it the Line 6 Firehawk Remote app?")
         for n in models:
             (dest / "models" / Path(n).name).write_bytes(z.read(n))
+        for n in names:                                   # picker groups (AmpCatalog.json, FXCatalog.json, ...)
+            if n.startswith("assets/") and n.endswith("Catalog.json"):
+                (dest / "models" / Path(n).name).write_bytes(z.read(n))
         for t in TABLES:
             if f"assets/{t}" in names:
                 (dest / t).write_bytes(z.read(f"assets/{t}"))

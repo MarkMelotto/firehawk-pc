@@ -11,8 +11,8 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional
 
 from . import __version__, icons
-from .catalog import LOOKS, Catalog, Model, Param, fallback_params, fmt, pretty
-from .device import Firehawk
+from .catalog import LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, pretty, split_cab
+from .device import _EN, Firehawk
 from .importer import data_dir, has_line6_data, import_apk
 
 log = logging.getLogger("firehawk.gui")
@@ -33,6 +33,8 @@ CHAIN = [("gate", "Gate"), ("wah", "Wah"), ("volume", "VolumePedal"), ("compress
          ("fx4", "FX4"), ("reverb", "FX5"), ("eq", "PostEQ"), ("looper", "Looper")]
 FIXED_FAMILY = {"gate": "gate", "volume": "volume", "compressor": "comp", "eq": "eq", "looper": "looper",
                 "wah": "wah", "cab": "cab", "amp": "amp"}
+
+ENABLE_TO_GROUP = {v: k for k, v in _EN.items()}     # "FX5Enable" -> "reverb"
 
 TILE_W, TILE_H = 68, 81      # block.png (136x162 @xxhdpi) at half size
 ICON_W, ICON_H = 54, 62
@@ -62,6 +64,13 @@ class Block:
         if self.group in FIXED_FAMILY:
             return FIXED_FAMILY[self.group]
         return "fx" if self.model_sid else "empty"
+
+    @property
+    def picker(self) -> Optional[str]:
+        """Which model list this block can switch between (None = fixed block)."""
+        if self.group in ("amp", "cab", "wah", "reverb"):
+            return self.group
+        return "fx" if self.group.startswith("fx") else None
 
     @property
     def look(self):
@@ -181,6 +190,10 @@ class App(tk.Tk):
         self.lst = tk.Listbox(wrap, bg=PANEL, fg="#e6e6e6", selectbackground=HEADER, selectforeground=TEXT,
                               highlightthickness=0, bd=0, activestyle="none", font=(FONT, 11))
         self.lst.pack(side="left", fill="both", expand=True)
+        rea = tk.Label(left, text=f"v{__version__}  ·  built with REA", fg="#6f7f9f", bg=PANEL, font=(FONT, 8),
+                       cursor="hand2", anchor="w")
+        rea.pack(side="bottom", fill="x", padx=12, pady=(0, 8))
+        rea.bind("<Button-1>", lambda e: __import__("webbrowser").open("https://github.com/morluto/rea"))
         self.lst.bind("<Double-Button-1>", self._preset_clicked)
         self.lst.bind("<Return>", self._preset_clicked)
 
@@ -200,6 +213,10 @@ class App(tk.Tk):
         self.lbl_kind.pack(side="left")
         self.lbl_model = tk.Label(ed, text="", fg=TEXT, bg=BG, font=(FONT, 15, "bold"))
         self.lbl_model.pack(side="left", padx=10)
+        self.lbl_model.bind("<Button-1>", lambda e: self.open_picker())
+        self.lbl_change = tk.Label(ed, text="", fg="#7fa7ff", bg=BG, font=(FONT, 9, "bold"), cursor="hand2")
+        self.lbl_change.pack(side="left")
+        self.lbl_change.bind("<Button-1>", lambda e: self.open_picker())
         self.btn_power = tk.Canvas(ed, width=40, height=40, bg=BG, highlightthickness=0, cursor="hand2")
         self.btn_power.pack(side="right")
         self.btn_power.bind("<Button-1>", lambda e: self.toggle_selected())
@@ -265,10 +282,15 @@ class App(tk.Tk):
         if not b:
             self.lbl_kind.config(text="")
             self.lbl_model.config(text="")
+            self.lbl_change.config(text="")
             self.btn_power.delete("all")
             return
         self.lbl_kind.config(text=b.look.label.upper(), fg=b.look.color)
-        self.lbl_model.config(text=b.title)
+        title = b.title
+        if b.group == "cab" and b.model:
+            title = b.model.name                         # mic is shown as its own row
+        self.lbl_model.config(text=title, cursor="hand2" if self._can_pick(b) else "")
+        self.lbl_change.config(text="CHANGE MODEL ▾" if self._can_pick(b) else "")
         self.btn_power.delete("all")
         if b.group != "amp":
             icons.power(self.btn_power, 20, 21, 14, b.enabled)
@@ -277,7 +299,10 @@ class App(tk.Tk):
         b = self.sel
         if not b:
             return []
-        return b.model.params if b.model else fallback_params(b.group)
+        ps = b.model.params if b.model else fallback_params(b.group)
+        if b.group == "cab" and b.model_sid:
+            ps = [Param("@mic", "Mic", 0, 0, len(MICS) - 1, 0)] + ps
+        return ps
 
     def _draw_rows(self):
         c = self.rows
@@ -362,9 +387,96 @@ class App(tk.Tk):
     def _send(self, b: Block, p: Param, v):
         b.values[p.sid] = v
         self._draw_rows()
+        if p.sid == "@mic":                                  # mic = part of the cab model symbol
+            if self.fh and b.model_sid:
+                b.model_sid = split_cab(b.model_sid)[0] + MICS[int(v)]
+                self.worker.set_latest((b.group, "@mic"), lambda sid: self._apply_model(b, sid), b.model_sid)
+            return
         if self.fh:
             fh = self.fh
             self.worker.set_latest((b.group, p.sid), lambda val, g=b.group, s=p.sid: fh.set(g, s, val), v)
+
+    # ------------------------------------------------------------ model picker
+    def _can_pick(self, b: Block) -> bool:
+        return bool(self.fh and b.picker and self.cat.groups(b.picker))
+
+    def open_picker(self):
+        b = self.sel
+        if not b or not self._can_pick(b):
+            if b and b.picker and self.cat.empty:
+                messagebox.showinfo("Change model", "Import the model data first (IMPORT FROM APK… at the top).")
+            return
+        syms = self.fh.editor.symbols.index
+        base, mic = split_cab(b.model_sid) if b.group == "cab" else (b.model_sid, 0)
+        rows = []                                           # (label, model id or None for a header)
+        for group, ids in self.cat.groups(b.picker):
+            avail = [i for i in ids if (i + MICS[mic] if b.group == "cab" else i) in syms]
+            if not avail:
+                continue
+            rows.append((group.upper(), None))
+            for i in avail:
+                m = self.cat.get(i)
+                name = m.name if m else pretty(i)
+                rows.append((("● " if i == base else "   ") + name, i))
+
+        win = tk.Toplevel(self)
+        win.title(f"Choose {b.look.label}")
+        win.configure(bg=PANEL)
+        win.geometry(f"380x560+{self.winfo_rootx() + 300}+{self.winfo_rooty() + 120}")
+        win.transient(self)
+        q = tk.StringVar()
+        ent = tk.Entry(win, textvariable=q, bg="#1e1e1e", fg=TEXT, insertbackground=TEXT, relief="flat",
+                       font=(FONT, 12))
+        ent.pack(fill="x", padx=10, pady=10, ipady=6)
+        lst = tk.Listbox(win, bg=PANEL, fg="#e6e6e6", selectbackground=HEADER, selectforeground=TEXT,
+                         highlightthickness=0, bd=0, activestyle="none", font=(FONT, 11))
+        lst.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        shown: List[Optional[str]] = []
+
+        def fill(*_):
+            needle = q.get().strip().lower()
+            lst.delete(0, "end")
+            shown.clear()
+            for label, mid in rows:
+                if mid is None or not needle or needle in label.lower():
+                    lst.insert("end", label)
+                    shown.append(mid)
+                    if mid is None:
+                        lst.itemconfig("end", fg=b.look.color, selectbackground=PANEL)
+        fill()
+        q.trace_add("write", fill)
+
+        def choose(_e=None):
+            sel = lst.curselection()
+            if not sel or shown[sel[0]] is None:
+                return
+            mid = shown[sel[0]]
+            win.destroy()
+            full = mid + MICS[mic] if b.group == "cab" else mid
+            self.lbl_model.config(text="Loading…")
+            self.worker.submit(self._apply_model, b, full)
+        lst.bind("<Double-Button-1>", choose)
+        lst.bind("<Return>", choose)
+        ent.bind("<Return>", lambda e: (lst.selection_set(next((i for i, m in enumerate(shown) if m), 0)), choose()))
+        ent.focus_set()
+
+    def _apply_model(self, b: Block, sid: str):
+        """Worker: load a model into the block, then re-read what the amp now has there."""
+        st = self.fh.set_model(b.group, sid)
+        if st < 0:
+            self.after(0, messagebox.showerror, "Change model", f"The amp refused {sid} in this block (error {st}).")
+        try:
+            b.model_sid = self.fh.editor.current_model(b.slot) or sid
+        except Exception:  # noqa: BLE001
+            b.model_sid = sid
+        b.model = self.cat.get(b.model_sid)
+        b.values.clear()
+        self.after(0, self._draw_chain)
+        self.after(0, self._update_editor_header)
+        self._load_block_values(b)
+        if b is not self.sel:
+            return
+        self.after(0, self._draw_rows)
 
     def toggle_selected(self):
         if self.sel:
@@ -497,6 +609,8 @@ class App(tk.Tk):
             self.worker.submit(self._load_block_values, self.sel)
 
     def _load_block_values(self, b: Block):
+        if b.group == "cab" and b.model_sid:
+            b.values["@mic"] = split_cab(b.model_sid)[1]
         for p in (b.model.params if b.model else fallback_params(b.group)):
             try:
                 b.values[p.sid] = self.fh.get(b.group, p.sid)
@@ -506,6 +620,18 @@ class App(tk.Tk):
             self.after(0, self._draw_rows)
 
     def _on_device_param(self, slot, param, value):
+        """Editor event from the amp (floorboard / amp controls)."""
+        log.info("amp event %s/%s = %r", slot, param, value)
+        if slot == "GuitarProc" and param in ENABLE_TO_GROUP:            # block switched on/off
+            for b in self.blocks:
+                if b.group == ENABLE_TO_GROUP[param]:
+                    b.enabled = bool(value)
+                    self._draw_chain()
+                    if b is self.sel:
+                        self._update_editor_header()
+            return
+        if slot == "GuitarProc" and param == "ChannelVolume":
+            slot, param = "Amp", "@volume"
         for b in self.blocks:
             if b.slot == slot and b.model and any(p.sid == param for p in b.model.params):
                 b.values[param] = value

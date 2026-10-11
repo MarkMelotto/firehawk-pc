@@ -103,6 +103,10 @@ class Firehawk:
         slot, p = resolve(group, param)
         return self.editor.get_param(slot, p)
 
+    def set_model(self, group: str, model_sid: str) -> int:
+        """Swap the model in a block (editor cmd 8 LoadDspModel); cab ids include the mic suffix."""
+        return self.editor.load_model(GROUP_SLOT[group], model_sid)
+
     def select_preset(self, number: int) -> int:
         """number is 1-based as shown on the unit."""
         return self.librarian.load_preset(number - 1)

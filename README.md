@@ -30,12 +30,14 @@ signal chain, turn effects on and off, and tweak amp and effect settings, much l
 | Edit a block | Click it in the signal chain, then drag the sliders |
 | Turn a block on/off | Double-click it, or use the power button on the right |
 | Fine-tune a value | Hold **Ctrl** and use the mouse wheel over a slider |
+| Change the amp, cab, pedal, delay, reverb… model | Select the block, click **CHANGE MODEL ▾** and pick one (needs the model data import below) |
+| Change the cab's microphone | Select the cab and use the **Mic** row |
 
 Presets you switch on the amp itself show up in the app automatically.
 
 ### Optional: edit every effect
 
-Out of the box you can edit the amp knobs and switch blocks on and off. To see **all settings of every effect**,
+Out of the box you can edit the amp knobs and switch blocks on and off. To **change models** and see **all settings of every effect**,
 the app needs the effect list from the official *Firehawk Remote* Android app. This is a one-time step:
 
 1. Get the app's `.apk` file, for example by exporting it from your Android phone with an "APK extractor" app.
@@ -83,14 +85,15 @@ How the Bluetooth protocol works is documented in [PROTOCOL.md](PROTOCOL.md).
 
 ### Making a release
 
-1. Bump `__version__` in `firehawk/__init__.py` and add a section to `CHANGELOG.md`.
-2. Commit, then tag and push:
-   ```
-   git tag v1.0.1
-   git push origin main --tags
-   ```
-3. GitHub Actions runs the tests, builds both `.exe` files and publishes the release
-   (see *Actions* tab). The tag must match `__version__`.
+1. Bump `__version__` in `firehawk/__init__.py` and add a `## 1.0.1` section to `CHANGELOG.md`.
+2. Commit and push to `main`.
+3. GitHub Actions runs the tests, builds both `.exe` files, creates tag `v1.0.1` and publishes the release
+   with that changelog section as notes (see the *Actions* tab). Pushes without a version bump only run the tests.
+
+## Credits
+
+Built with [**REA**](https://github.com/morluto/rea), which was used to reverse-engineer the official app's
+Bluetooth protocol, and with Ghidra for the decompilation.
 
 ## Licence
 

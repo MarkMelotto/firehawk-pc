@@ -80,10 +80,29 @@ class Model:
         return LOOKS.get(self.family, LOOKS["empty"])
 
 
+# cab + mic are one device symbol (L6A36Preset::CabModelAndMicToStudioCabSymbol)
+MICS = ["57OnAxis", "57OffAxis", "421", "U67"]
+MIC_NAMES = ["57 On Axis", "57 Off Axis", "421 Dynamic", "U67 Condenser"]
+
+# picker groups per block (from the app's *Catalog.json), in the app's order
+PICKERS = {"amp": ("AmpCatalog.json", ["Clean", "American", "British", "High Gain"]),
+           "fx": ("FXCatalog.json", None), "reverb": ("ReverbCatalog.json", None),
+           "wah": ("WahCatalog.json", None), "cab": ("CabCatalog.json", None)}
+
+
+def split_cab(sid: str):
+    """'2x12BlackfaceStudio57OnAxis' -> ('2x12BlackfaceStudio', 0)."""
+    for i, m in enumerate(MICS):
+        if sid.endswith(m):
+            return sid[: -len(m)], i
+    return sid, 0
+
+
 class Catalog:
     def __init__(self, folder: Optional[Path] = None):
         from .importer import models_dir
         folder = folder or models_dir()
+        self.folder = folder
         self.models: Dict[str, Model] = {}
         for f in sorted(folder.glob("*.models")):
             for m in json.loads(f.read_text(encoding="utf-8")):
@@ -98,6 +117,17 @@ class Catalog:
                           and p.get("valueType", 1) != 3]
                 # newest definition wins (hd files sort after the classic ones)
                 self.models[sid] = Model(sid, m.get("shortname") or m.get("name", sid), fam, params)
+
+    def groups(self, kind: str) -> List[tuple]:
+        """[(group name, [model ids...]), ...] for a picker kind (amp, fx, reverb, wah, cab)."""
+        if kind not in PICKERS:
+            return []
+        fname, only = PICKERS[kind]
+        f = self.folder / fname
+        if not f.exists():
+            return []
+        data = json.loads(f.read_text(encoding="utf-8"))
+        return [(g, ids) for g, ids in data.items() if only is None or g in only]
 
     @property
     def empty(self) -> bool:
@@ -125,6 +155,8 @@ def fallback_params(group: str) -> List[Param]:
 
 def fmt(p: Param, v) -> str:
     """Display like the app: 0..1 knobs as 0-10, ints as-is, bools On/Off."""
+    if p.sid == "@mic":
+        return MIC_NAMES[int(v)] if 0 <= int(v) < len(MIC_NAMES) else str(v)
     if p.vtype == 2:
         return "On" if v else "Off"
     if p.vtype == 0:

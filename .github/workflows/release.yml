@@ -1,9 +1,11 @@
-# Push a tag like v1.0.1 -> tests run, the Windows .exe files are built and attached to a GitHub Release.
+# Bump __version__ in firehawk/__init__.py, add a CHANGELOG.md section, push to main:
+# this tests, builds the Windows .exe files and publishes Release vX.Y.Z (tag created automatically).
+# Pushes that don't change the version only run the tests.
 name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -17,33 +19,55 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
-        run: pip install -r requirements.txt pyinstaller
-      - name: Check tag matches firehawk/__init__.py
-        if: startsWith(github.ref, 'refs/tags/')
+
+      - name: Version
+        id: v
         shell: bash
         run: |
           v=$(python -c "import firehawk; print(firehawk.__version__)")
-          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != version $v"; exit 1; }
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null; then
+            echo "new=false" >> "$GITHUB_OUTPUT"; echo "v$v already released - tests only"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"; echo "releasing v$v"
+          fi
+          # release notes = this version's CHANGELOG section
+          python - "$v" > notes.md <<'PY'
+          import re, sys
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## {re.escape(sys.argv[1])}\b.*?(?=^## |\Z)", text, re.M | re.S)
+          print(m.group(0).split("\n", 1)[1].strip() if m else "")
+          PY
+
+      - name: Install
+        run: pip install -r requirements.txt pyinstaller
+
       - name: Tests
         run: |
           python -m tests.test_e2e
           python -m tests.test_lossy
+
       - name: Build
+        if: steps.v.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           python -m firehawk.make_icon firehawk.ico
           pyinstaller --noconfirm --onefile --windowed --name FirehawkRemote --icon firehawk.ico --hidden-import serial.tools.list_ports --hidden-import PIL._tkinter_finder run_gui.py
           pyinstaller --noconfirm --onefile --console --name firehawk-cli run_cli.py
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/')
+
+      - name: Publish release
+        if: steps.v.outputs.new == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Firehawk Remote ${{ steps.v.outputs.tag }}
+          body_path: notes.md
           files: |
             dist/FirehawkRemote.exe
             dist/firehawk-cli.exe
-          body_path: CHANGELOG.md
+
       - name: Keep build (manual runs)
-        if: "!startsWith(github.ref, 'refs/tags/')"
+        if: steps.v.outputs.new != 'true' && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: FirehawkRemote

@@ -94,6 +94,11 @@ class SimDevice:
         if mode == 'editor' and cmd == 9:
             s, p = struct.unpack('<II', a); t, v = self.params.get((s, p), (4, 0))
             return struct.pack('<iII', 0, t, v)
+        if mode == 'editor' and cmd == 8:                 # LoadDspModel(slot, model)
+            slot, model = struct.unpack('<II', a)
+            if slot >= len(self.names) or model >= len(self.names): return struct.pack('<i', -4)
+            self.chain[self.names[slot]] = self.names[model]
+            return struct.pack('<i', 0)
         if mode == 'editor' and cmd == 7:
             slot, = struct.unpack('<I', a); name = self.names[slot] if slot < len(self.names) else ''
             m = self.chain.get(name)
