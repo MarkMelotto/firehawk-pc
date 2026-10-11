@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-ASSETS = Path(__file__).with_name("assets")
 
 
 def _argb(v: int) -> str:
@@ -16,32 +15,32 @@ def _argb(v: int) -> str:
 @dataclass(frozen=True)
 class BlockLook:
     label: str
-    icon: str          # png in assets/
     color: str         # thumb / accent colour (ProcessorType.color)
     track: str         # darker fill (slider_track_*.png)
 
 
 # ProcessorType enum + slider_thumb/track colours
 LOOKS = {
-    "gate":     BlockLook("Gate", "block_gate.png", _argb(-5789785), "#3d3d3d"),
-    "volume":   BlockLook("Vol", "block_volume.png", _argb(-9515853), "#335e52"),
-    "wah":      BlockLook("Wah", "block_wah.png", _argb(-5009727), "#512d5f"),
-    "stomp":    BlockLook("Stomp", "block_stomp.png", "#b0b336", "#474801"),
-    "stomp_hd": BlockLook("Stomp", "block_stomp_hd.png", "#b0b336", "#474801"),
-    "mod":      BlockLook("Mod", "block_mod.png", _argb(-14243360), "#015274"),
-    "delay":    BlockLook("Delay", "block_delay.png", _argb(-16601566), "#016301"),
-    "delay_hd": BlockLook("Delay", "block_delay_hd.png", _argb(-16601566), "#016301"),
-    "synth":    BlockLook("Synth", "block_synth.png", _argb(-4886562), "#481b4d"),
-    "reverb":   BlockLook("Reverb", "block_reverb.png", _argb(-1025496), "#812101"),
-    "reverb_hd": BlockLook("Reverb", "block_reverb_hd.png", _argb(-1025496), "#812101"),
-    "amp":      BlockLook("Amp", "block_amp.png", "#ff2a00", "#5e1000"),
-    "amp_hd":   BlockLook("HD Amp", "block_amp_blue_hd.png", _argb(-15897892), "#042144"),
-    "cab":      BlockLook("Cab", "block_cab.png", _argb(-5789785), "#3d3d3d"),
-    "comp":     BlockLook("Comp", "block_comp.png", _argb(-5197002), "#414201"),
-    "eq":       BlockLook("EQ", "block_eq.png", "#b38236", "#51370f"),
-    "looper":   BlockLook("Looper", "block_looper.png", _argb(-5789785), "#3d3d3d"),
-    "fxloop":   BlockLook("FX Loop", "block_fxloop.png", _argb(-15158874), "#016149"),
-    "empty":    BlockLook("Empty", "", "#a7a7a7", "#3d3d3d"),
+    "gate":     BlockLook("Gate", _argb(-5789785), "#3d3d3d"),
+    "volume":   BlockLook("Vol", _argb(-9515853), "#335e52"),
+    "wah":      BlockLook("Wah", _argb(-5009727), "#512d5f"),
+    "stomp":    BlockLook("Stomp", "#b0b336", "#474801"),
+    "stomp_hd": BlockLook("Stomp", "#b0b336", "#474801"),
+    "mod":      BlockLook("Mod", _argb(-14243360), "#015274"),
+    "delay":    BlockLook("Delay", _argb(-16601566), "#016301"),
+    "delay_hd": BlockLook("Delay", _argb(-16601566), "#016301"),
+    "synth":    BlockLook("Synth", _argb(-4886562), "#481b4d"),
+    "reverb":   BlockLook("Reverb", _argb(-1025496), "#812101"),
+    "reverb_hd": BlockLook("Reverb", _argb(-1025496), "#812101"),
+    "amp":      BlockLook("Amp", "#ff2a00", "#5e1000"),
+    "amp_hd":   BlockLook("HD Amp", _argb(-15897892), "#042144"),
+    "cab":      BlockLook("Cab", _argb(-5789785), "#3d3d3d"),
+    "comp":     BlockLook("Comp", _argb(-5197002), "#414201"),
+    "eq":       BlockLook("EQ", "#b38236", "#51370f"),
+    "looper":   BlockLook("Looper", _argb(-5789785), "#3d3d3d"),
+    "fxloop":   BlockLook("FX Loop", _argb(-15158874), "#016149"),
+    "fx":       BlockLook("FX", "#a7a7a7", "#3d3d3d"),
+    "empty":    BlockLook("Empty", "#a7a7a7", "#3d3d3d"),
 }
 
 # assets/*.models "category" -> look family
@@ -50,6 +49,10 @@ CATEGORY = {1: "amp", 2: "cab", 3: "stomp", 4: "stomp", 5: "synth", 6: "synth", 
 FIXED = {"Gate": "gate", "VolumePedal": "volume", "SharcPodFixedComp": "comp",
          "ParaGraphic4_band": "eq", "FXLoop": "fxloop", "LooperFx500": "looper"}
 HD_FAMILIES = {"amp", "stomp", "delay", "reverb"}
+
+# without imported model data: the six controls on the amp's front panel
+FALLBACK = {"amp": [("Drive", "Drive"), ("Bass", "Bass"), ("Mid", "Mid"), ("Treble", "Treble"),
+                    ("Presence", "Presence"), ("@volume", "Volume")]}
 
 # params the app hides or edits elsewhere
 HIDDEN = {"@enabled", "@stereo", "@temposync", "@mixtype", "@mic", "@post"}
@@ -78,7 +81,9 @@ class Model:
 
 
 class Catalog:
-    def __init__(self, folder: Path = ASSETS / "models"):
+    def __init__(self, folder: Optional[Path] = None):
+        from .importer import models_dir
+        folder = folder or models_dir()
         self.models: Dict[str, Model] = {}
         for f in sorted(folder.glob("*.models")):
             for m in json.loads(f.read_text(encoding="utf-8")):
@@ -94,12 +99,28 @@ class Catalog:
                 # newest definition wins (hd files sort after the classic ones)
                 self.models[sid] = Model(sid, m.get("shortname") or m.get("name", sid), fam, params)
 
+    @property
+    def empty(self) -> bool:
+        return not self.models
+
     def get(self, sid: str) -> Optional[Model]:
         """Exact match, else longest catalog id that prefixes it (cabs carry a mic suffix on the unit)."""
         if sid in self.models:
             return self.models[sid]
         best = max((k for k in self.models if sid.startswith(k)), key=len, default=None)
         return self.models.get(best) if best else None
+
+
+def pretty(sid: str) -> str:
+    """'HD_AmpBlackfaceDoubleVib' -> 'Blackface Double Vib' (used when no model data is imported)."""
+    import re
+    s = re.sub(r"^(HD_)?(Amp)?", "", sid)
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ", s)
+    return s.replace("_", " ").strip() or sid
+
+
+def fallback_params(group: str) -> List[Param]:
+    return [Param(sid, name, 1, 0.0, 1.0, 0.5) for sid, name in FALLBACK.get(group, [])]
 
 
 def fmt(p: Param, v) -> str:

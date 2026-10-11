@@ -1,0 +1,50 @@
+# Push a tag like v1.0.1 -> tests run, the Windows .exe files are built and attached to a GitHub Release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -r requirements.txt pyinstaller
+      - name: Check tag matches firehawk/__init__.py
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          v=$(python -c "import firehawk; print(firehawk.__version__)")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != version $v"; exit 1; }
+      - name: Tests
+        run: |
+          python -m tests.test_e2e
+          python -m tests.test_lossy
+      - name: Build
+        run: |
+          python -m firehawk.make_icon firehawk.ico
+          pyinstaller --noconfirm --onefile --windowed --name FirehawkRemote --icon firehawk.ico --hidden-import serial.tools.list_ports --hidden-import PIL._tkinter_finder run_gui.py
+          pyinstaller --noconfirm --onefile --console --name firehawk-cli run_cli.py
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/FirehawkRemote.exe
+            dist/firehawk-cli.exe
+          body_path: CHANGELOG.md
+      - name: Keep build (manual runs)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: FirehawkRemote
+          path: dist/*.exe

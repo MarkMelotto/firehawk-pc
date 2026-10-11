@@ -1,54 +1,98 @@
-# firehawk-pc
+# Firehawk Remote for PC
 
-PC remote for the Line 6 Firehawk 1500 / Firehawk FX over Bluetooth (SPP). It's a clean reimplementation of the protocol in Line 6's original `libAmplifiRemoteNdk.so`. See `PROTOCOL.md`.
+Control your **Line 6 Firehawk 1500 / Firehawk FX** from a Windows PC over Bluetooth: switch presets, see the
+signal chain, turn effects on and off, and tweak amp and effect settings, much like the phone app.
 
-## Get the Line 6 files
+> Unofficial project. Not made, endorsed or supported by Line 6 / Yamaha Guitar Group.
+> "Line 6" and "Firehawk" are trademarks of their owners and are used here only to describe what the app works with.
 
-The app's graphics, model definitions and symbol tables belong to Line 6, so they aren't in this repo. Copy them from your own Firehawk Remote APK:
+---
+
+## Install (no programming needed)
+
+1. **Download** — go to [**Releases**](https://github.com/MarkMelotto/firehawk-pc/releases/latest) and download
+   `FirehawkRemote.exe`. That's the whole app; there is nothing to install.
+2. **Pair the amp** — on the PC open *Settings → Bluetooth & devices → Add device → Bluetooth* and pick your Firehawk
+   (e.g. `Firehawk_1500_62`).
+3. **Find its COM port** — in *Settings → Bluetooth & devices → Devices*, scroll down to *More Bluetooth settings*,
+   open the **COM Ports** tab and note the port marked **Outgoing** next to your Firehawk (e.g. `COM4`).
+   No outgoing port? Click *Add… → Outgoing → Firehawk → OK*.
+4. **Close the Firehawk app on your phone** — the amp talks to one remote at a time.
+5. **Start `FirehawkRemote.exe`.** Windows may say *"Windows protected your PC"* because the app isn't signed:
+   click **More info → Run anyway**.
+6. Type the port (e.g. `COM4`) at the top right and click **CONNECT**.
+
+### Using it
+
+| You want to… | Do this |
+|---|---|
+| Load a preset | Double-click it in the list on the left |
+| Edit a block | Click it in the signal chain, then drag the sliders |
+| Turn a block on/off | Double-click it, or use the power button on the right |
+| Fine-tune a value | Hold **Ctrl** and use the mouse wheel over a slider |
+
+Presets you switch on the amp itself show up in the app automatically.
+
+### Optional: edit every effect
+
+Out of the box you can edit the amp knobs and switch blocks on and off. To see **all settings of every effect**,
+the app needs the effect list from the official *Firehawk Remote* Android app. This is a one-time step:
+
+1. Get the app's `.apk` file, for example by exporting it from your Android phone with an "APK extractor" app.
+2. In Firehawk Remote click **IMPORT FROM APK…** and pick the file.
+
+The data stays on your PC (`%LOCALAPPDATA%\FirehawkRemote`); nothing is uploaded.
+
+### Problems?
+
+- **"Cannot open COM…"** — wrong port, or the amp is off / not paired. Use the *Outgoing* port.
+- **Connects but nothing loads** — close the phone app, switch the amp off and on, and try again.
+- Still stuck? Open an [issue](https://github.com/MarkMelotto/firehawk-pc/issues) and attach
+  `firehawk-debug.log`, which is written next to `FirehawkRemote.exe`.
+
+---
+
+## Command line
+
+`firehawk-cli.exe` (also on the Releases page) is for scripting:
+
+```
+firehawk-cli.exe --port COM4 presets              # list preset names
+firehawk-cli.exe --port COM4 select 12            # load preset 12
+firehawk-cli.exe --port COM4 set amp Drive 0.7    # knobs are 0..1
+firehawk-cli.exe --port COM4 set reverb @enabled off
+firehawk-cli.exe --port COM4 watch                # print changes made on the amp
+```
+
+Groups: `amp cab gate wah volume fx1 fx2 fx3 fx4 reverb compressor eq looper`.
+Add `-vv` to log every Bluetooth frame. `--port` also accepts the amp's Bluetooth MAC address.
+
+## For developers
 
 ```
 pip install -r requirements.txt
-python tools/extract_assets.py path\to\firehawk.apk
+python -m firehawk.gui                 # run from source
+python -m tests.test_e2e               # protocol tests against a simulated amp
+python -m tests.test_lossy             # same, with 15 % frame loss
+python -m tests.preview_gui            # GUI against the simulated amp, no hardware needed
+python -m firehawk.importer x.apk      # import model data from the command line
+build.bat                              # local .exe build
 ```
 
-## Setup (Windows)
+How the Bluetooth protocol works is documented in [PROTOCOL.md](PROTOCOL.md).
 
-1. Pair the Firehawk in Windows Bluetooth settings. **Close the phone app first**, because the Firehawk accepts one remote at a time.
-2. Open **More Bluetooth options → COM Ports** and note the **Outgoing** port for the Firehawk (for example `COM5`). If none is listed, click **Add… → Outgoing → Firehawk**.
-3. Install the dependencies and extract the assets (see above), or just run `dist\FirehawkRemote.exe` from a build.
+### Making a release
 
-## Use
+1. Bump `__version__` in `firehawk/__init__.py` and add a section to `CHANGELOG.md`.
+2. Commit, then tag and push:
+   ```
+   git tag v1.0.1
+   git push origin main --tags
+   ```
+3. GitHub Actions runs the tests, builds both `.exe` files and publishes the release
+   (see *Actions* tab). The tag must match `__version__`.
 
-```
-python -m firehawk.gui                                   # GUI: presets, amp knobs, block on/off
-python -m firehawk.cli --port COM5 presets
-python -m firehawk.cli --port COM5 select 12
-python -m firehawk.cli --port COM5 set amp Drive 0.7      # knobs are 0..1
-python -m firehawk.cli --port COM5 set reverb @enabled off
-python -m firehawk.cli --port COM5 get amp Treble
-python -m firehawk.cli --port COM5 watch                  # live knob/preset events from the unit
-```
+## Licence
 
-Add `-vv` to log every frame. If something fails on real hardware, that log shows where.
-
-`--port` also accepts a MAC address (`00:11:22:33:44:55`) for a direct RFCOMM socket without a COM port.
-
-Groups are `amp cab gate wah volume fx1 fx2 fx3 fx4 reverb compressor eq looper`. Param names come from `firehawk/assets/models/*.models` (for example `Drive`, `Bass`, `Mid`, `Treble`, `Presence`). The special params are `@enabled`, `@volume` (amp channel volume), `@mix`, and `@post`.
-
-## Build the .exe
-
-```
-build.bat        # -> dist\FirehawkRemote.exe and dist\firehawk-cli.exe (needs the extracted assets)
-```
-
-## Tests
-
-```
-python -m tests.test_e2e     # full stack vs simulated device + byte-exact check against captured frames
-python -m tests.test_lossy   # 15 % frame loss both ways
-python -m tests.preview_gui  # GUI against the simulated amp, no hardware needed
-```
-
-## Status
-
-Works on a real Firehawk 1500 over COM4: 128 presets, preset switching both ways, amp knobs, block on/off. Turning the amp's physical knobs isn't mirrored live; the window re-reads the knobs when the preset changes. `dist/FirehawkRemote.exe` writes `firehawk-debug.log` next to itself.
+[MIT](LICENSE) for the code in this repository. No Line 6 code, graphics or data are included; the optional model
+data is read from the user's own copy of the official app.

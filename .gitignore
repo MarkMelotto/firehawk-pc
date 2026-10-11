@@ -6,7 +6,7 @@ __pycache__/
 *.pyc
 *.log
 
-# Line 6 material: extract from your own APK with tools/extract_assets.py
+# Line 6 material (never committed; the app imports it from the user's own APK at runtime)
 firehawk/assets/
 firehawk/*.bin
 firehawk.ico

@@ -1,6 +1,8 @@
 @echo off
-REM Rebuild FirehawkRemote.exe and firehawk-cli.exe (needs Python 3.10+ on PATH)
-pip install pyinstaller pyserial pillow || exit /b 1
-pyinstaller --noconfirm --onefile --windowed --name FirehawkRemote --icon firehawk.ico --add-data "firehawk/*.bin;firehawk" --add-data "firehawk/assets;firehawk/assets" --hidden-import PIL._tkinter_finder --hidden-import serial.tools.list_ports run_gui.py || exit /b 1
-pyinstaller --noconfirm --onefile --console --name firehawk-cli --add-data "firehawk/*.bin;firehawk" run_cli.py || exit /b 1
+REM Build dist\FirehawkRemote.exe and dist\firehawk-cli.exe locally (needs Python 3.10+ on PATH).
+REM Releases are normally built by GitHub: push a tag like v1.0.1.
+pip install -r requirements.txt pyinstaller || exit /b 1
+python -m firehawk.make_icon firehawk.ico || exit /b 1
+pyinstaller --noconfirm --onefile --windowed --name FirehawkRemote --icon firehawk.ico --hidden-import serial.tools.list_ports --hidden-import PIL._tkinter_finder run_gui.py || exit /b 1
+pyinstaller --noconfirm --onefile --console --name firehawk-cli run_cli.py || exit /b 1
 echo Done: see dist\

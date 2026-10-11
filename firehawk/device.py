@@ -32,8 +32,9 @@ for _n in range(1, 5):
                        (f"fx{_n}", "@mixtype"): f"FX{_n}MixType", (f"fx{_n}", "@stereo"): f"FX{_n}StereoEnable"})
 
 # cached symbol tables shipped in the APK; Firehawk 1500 matches Firebird (29577 bytes)
-CACHED_TABLES = [Path(__file__).with_name(n) for n in
-                 ("defaultSymbolTable_Firebird.bin", "defaultSymbolTable_FX100.bin", "defaultSymbolTable.bin")]
+# cached symbol tables from an imported APK (optional; the amp sends its own table otherwise)
+from .importer import TABLES, data_dir
+CACHED_TABLES = [data_dir() / n for n in TABLES]
 
 
 def resolve(group: str, param: str) -> tuple[str, str]:

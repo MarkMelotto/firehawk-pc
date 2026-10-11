@@ -5,6 +5,7 @@ rsmc.TICK_S = 0.02                 # speed up IAP sync for the test
 from firehawk.device import Firehawk
 from firehawk.rsmc import crc16, build_frame
 from tests.sim_device import SimDevice
+from tests.fake_table import build as build_table
 
 # 1) framing matches bytes captured from a real Firehawk session (S25 port constants)
 CAPTURED_SYN = bytes.fromhex("55 55 00 01 00 08 14 00 b1 bd ce a7 0c 00 00 28 03 20 ef 03 00 00 e4 00 00 01 00 21 00 10 00 00")
@@ -18,12 +19,11 @@ class Pipe:
     def read(self, n=256): time.sleep(3600)
     def close(self): pass
 
-# device table differs from every cached one -> forces the 29 KB download through stream credit
+# synthetic ~27 KB table, nothing cached -> full download through stream credit
 import random
-table = open('firehawk/defaultSymbolTable_Firebird.bin', 'rb').read()
-table = table[:8] + table[8:]  # same content
+table = build_table()
 import firehawk.device as fd
-fd.CACHED_TABLES = [fd.CACHED_TABLES[-1]]   # only the AMPLIFi default (wrong) -> download
+fd.CACHED_TABLES = []   # no cached table -> full download through stream credit
 dev = SimDevice(table)
 host_t = Pipe()
 fh = Firehawk(host_t)

@@ -7,13 +7,13 @@ import queue
 import sys
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional
 
-from PIL import Image, ImageEnhance, ImageTk
-
-from .catalog import ASSETS, LOOKS, Catalog, Model, Param, fmt
+from . import __version__, icons
+from .catalog import LOOKS, Catalog, Model, Param, fallback_params, fmt, pretty
 from .device import Firehawk
+from .importer import data_dir, has_line6_data, import_apk
 
 log = logging.getLogger("firehawk.gui")
 
@@ -46,25 +46,6 @@ def _com_ports():
         return []
 
 
-class Images:
-    def __init__(self):
-        self._cache: Dict[tuple, ImageTk.PhotoImage] = {}
-
-    def get(self, name: str, w: int, h: Optional[int] = None, dim: bool = False):
-        key = (name, w, h, dim)
-        if key not in self._cache:
-            im = Image.open(ASSETS / name).convert("RGBA")
-            if h is None:
-                h = round(im.height * w / im.width)
-            im.thumbnail((w, h), Image.LANCZOS)
-            if dim:
-                r, g, b, a = im.split()
-                rgb = ImageEnhance.Brightness(Image.merge("RGB", (r, g, b))).enhance(0.35)
-                im = Image.merge("RGBA", (*rgb.split(), a))
-            self._cache[key] = ImageTk.PhotoImage(im)
-        return self._cache[key]
-
-
 class Block:
     def __init__(self, group: str, slot: str):
         self.group, self.slot = group, slot
@@ -78,7 +59,9 @@ class Block:
     def family(self) -> str:
         if self.model:
             return self.model.family
-        return FIXED_FAMILY.get(self.group, "empty")
+        if self.group in FIXED_FAMILY:
+            return FIXED_FAMILY[self.group]
+        return "fx" if self.model_sid else "empty"
 
     @property
     def look(self):
@@ -86,7 +69,7 @@ class Block:
 
     @property
     def title(self) -> str:
-        return self.model.name if self.model else (self.model_sid or self.look.label)
+        return self.model.name if self.model else (pretty(self.model_sid) if self.model_sid else self.look.label)
 
 
 class Worker(threading.Thread):
@@ -125,13 +108,14 @@ class Worker(threading.Thread):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Firehawk Remote")
+        self.title(f"Firehawk Remote {__version__}")
         self.geometry("1180x720")
         self.minsize(980, 600)
         self.configure(bg=BG)
-        self.img = Images()
         try:
-            self.iconphoto(True, self.img.get("icon_fh1500_white.png", 64))
+            from PIL import ImageTk
+            self._icon = ImageTk.PhotoImage(icons.app_icon_png(64))
+            self.iconphoto(True, self._icon)
         except Exception:  # noqa: BLE001 - icon is cosmetic
             pass
         self.cat = Catalog()
@@ -160,7 +144,9 @@ class App(tk.Tk):
         top = tk.Frame(self, bg=HEADER, height=56)
         top.pack(fill="x")
         top.pack_propagate(False)
-        tk.Label(top, image=self.img.get("icon_fh1500_white.png", 52), bg=HEADER).pack(side="left", padx=(12, 8))
+        logo = tk.Canvas(top, width=52, height=52, bg=HEADER, highlightthickness=0)
+        logo.pack(side="left", padx=(12, 8))
+        icons.glyph(logo, "amp", 26, 26, 52, TEXT)
         titles = tk.Frame(top, bg=HEADER)
         titles.pack(side="left")
         self.lbl_device = tk.Label(titles, text="FIREHAWK REMOTE", fg=TEXT, bg=HEADER, font=(FONT, 13, "bold"))
@@ -171,6 +157,11 @@ class App(tk.Tk):
                              activebackground="#1460b8", activeforeground=TEXT, font=(FONT, 10, "bold"),
                              padx=14, bd=0, cursor="hand2")
         self.btn.pack(side="right", padx=12, pady=12)
+        self.btn_import = tk.Button(top, text="IMPORT FROM APK…", command=self.import_apk, bg=HEADER, fg="#ffd27a",
+                                    relief="flat", activebackground=HILITE, activeforeground=TEXT,
+                                    font=(FONT, 9, "bold"), bd=0, cursor="hand2")
+        if not has_line6_data():
+            self.btn_import.pack(side="right", padx=(0, 18))
         self.port = ttk.Combobox(top, values=_com_ports(), width=18, style="Dark.TCombobox")
         self.port.pack(side="right", pady=14)
         tk.Label(top, text="PORT", fg="#aab7d6", bg=HEADER, font=(FONT, 9, "bold")).pack(side="right", padx=6)
@@ -209,7 +200,7 @@ class App(tk.Tk):
         self.lbl_kind.pack(side="left")
         self.lbl_model = tk.Label(ed, text="", fg=TEXT, bg=BG, font=(FONT, 15, "bold"))
         self.lbl_model.pack(side="left", padx=10)
-        self.btn_power = tk.Label(ed, bg=BG, cursor="hand2")
+        self.btn_power = tk.Canvas(ed, width=40, height=40, bg=BG, highlightthickness=0, cursor="hand2")
         self.btn_power.pack(side="right")
         self.btn_power.bind("<Button-1>", lambda e: self.toggle_selected())
 
@@ -247,11 +238,8 @@ class App(tk.Tk):
         c.create_line(x, mid, x + total, mid, fill="#3a3a3a", width=3)
         for b in shown:
             sel = b is self.sel
-            c.create_image(x, 8, anchor="nw",
-                           image=self.img.get("selected_block.png" if sel else "block.png", TILE_W, TILE_H))
-            if b.look.icon:
-                c.create_image(x + TILE_W // 2, 8 + TILE_H // 2,
-                               image=self.img.get(b.look.icon, ICON_W, ICON_H, dim=not b.enabled))
+            icons.tile(c, x, 8, TILE_W, TILE_H, sel)
+            icons.glyph(c, b.family, x + TILE_W // 2, 8 + TILE_H // 2, ICON_W, b.look.color, dim=not b.enabled)
             label = b.title if len(b.title) <= 12 else b.title[:11] + "…"
             c.create_text(x + TILE_W // 2, 8 + TILE_H + 12, text=label, fill=TEXT if b.enabled else "#666",
                           font=(FONT, 8, "bold" if sel else "normal"))
@@ -277,15 +265,19 @@ class App(tk.Tk):
         if not b:
             self.lbl_kind.config(text="")
             self.lbl_model.config(text="")
-            self.btn_power.config(image="")
+            self.btn_power.delete("all")
             return
         self.lbl_kind.config(text=b.look.label.upper(), fg=b.look.color)
         self.lbl_model.config(text=b.title)
-        self.btn_power.config(image=self.img.get("icon_onoff.png" if b.enabled else "icon_onoff_off.png", 34))
+        self.btn_power.delete("all")
+        if b.group != "amp":
+            icons.power(self.btn_power, 20, 21, 14, b.enabled)
 
     def _params(self) -> List[Param]:
         b = self.sel
-        return b.model.params if (b and b.model) else []
+        if not b:
+            return []
+        return b.model.params if b.model else fallback_params(b.group)
 
     def _draw_rows(self):
         c = self.rows
@@ -299,7 +291,9 @@ class App(tk.Tk):
             return
         params = self._params()
         if not params:
-            c.create_text(w // 2, 60, text="No editable parameters for this block", fill=SUB, font=(FONT, 12))
+            hint = ("Import the model data (button at the top) to edit this block" if self.cat.empty
+                    else "No editable parameters for this block")
+            c.create_text(w // 2, 60, text=hint, fill=SUB, font=(FONT, 12))
             return
         y, h = 0, 46
         look = b.look
@@ -384,6 +378,27 @@ class App(tk.Tk):
         self._update_editor_header()
         if self.fh:
             self.worker.submit(self.fh.set, b.group, "@enabled", b.enabled)
+
+    def import_apk(self):
+        messagebox.showinfo(
+            "Import model data",
+            "To show every effect's settings, Firehawk Remote reads the model list from the official "
+            "Line 6 Firehawk Remote Android app (.apk file).\n\nNothing is uploaded or shared; the data is "
+            f"stored in {data_dir()}.\n\nPick the .apk file in the next window.")
+        path = filedialog.askopenfilename(title="Select the Firehawk Remote .apk",
+                                          filetypes=[("Android app", "*.apk"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            n = import_apk(path)
+        except Exception as e:  # noqa: BLE001 - show any import problem
+            messagebox.showerror("Import failed", str(e))
+            return
+        self.cat = Catalog()
+        self.btn_import.pack_forget()
+        messagebox.showinfo("Import model data", f"Imported {n} model files. All effects are now editable.")
+        if self.fh:
+            self.worker.submit(self._load_chain)
 
     # -------------------------------------------------------------- device I/O
     def connect(self):
@@ -482,9 +497,7 @@ class App(tk.Tk):
             self.worker.submit(self._load_block_values, self.sel)
 
     def _load_block_values(self, b: Block):
-        if not b.model:
-            return
-        for p in b.model.params:
+        for p in (b.model.params if b.model else fallback_params(b.group)):
             try:
                 b.values[p.sid] = self.fh.get(b.group, p.sid)
             except Exception:  # noqa: BLE001 - param not addressable on this firmware

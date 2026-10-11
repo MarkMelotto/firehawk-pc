@@ -6,6 +6,7 @@ rsmc.TICK_S = 0.02
 from firehawk import gui
 from firehawk.device import Firehawk
 from tests.sim_device import SimDevice
+from tests.fake_table import build as build_table
 
 class Pipe:
     def __init__(self): self.peer = None
@@ -15,7 +16,7 @@ class Pipe:
 
 class DemoApp(gui.App):
     def _open(self, target):
-        dev = SimDevice(open("firehawk/defaultSymbolTable_Firebird.bin", "rb").read())
+        dev = SimDevice(build_table())
         t = Pipe(); fh = Firehawk(t)
         t.peer = dev.feed
         dev.to_host = lambda b: threading.Thread(target=fh.link.feed, args=(b,)).start()
