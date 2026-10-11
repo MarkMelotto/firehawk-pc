@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 — 2026-10-11
+
+- Tuner: click **TUNER** to use the amp's built-in tuner, shown like the phone app (note, ">" / "<" arrows and the
+  cents bar). Switching the tuner on with the amp's footswitch opens it automatically.
+- `firehawk-cli.exe tuner` prints note and cents.
+
 ## 1.0.0 — 2026-10-11
 
 First release.

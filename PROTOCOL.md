@@ -91,6 +91,7 @@ Typed value: `{type u32, value}` with 2 = int, 3 = bool, 4 = float32.
 | 8 LoadDspModel | slot, model | status |
 | 9 GetDspModelParam | slot, param | status, typedValue |
 | 10 SetDspModelParam | slot, param, typedValue | status |
+| 0x0B / 0x0C (Un)RegisterDspEvent | slot, event | status |
 | 0x0E SetGlobalTempo | float | status |
 | 0x11/0x12 Get/SetPersistentSysParam, 0x13/0x14 PSKey, 0x15/0x16 SystemSetting | | |
 
@@ -120,6 +121,18 @@ App groups map to DSP slots (`GroupIDToSlotSymbol`, non-AEON):
 `@` params are on slot `GuitarProc`: `FXnEnable`, `FXnPost`, `FXnMix`, `FXnMixType`, `ChannelVolume`, and so on (see `device.py`).
 
 Parameter names and ranges per model are in `assets/*.models` (JSON). Knob values are normalised to 0..1.
+
+### Tuner (`A36EditorLibrarian::engageTunerInternal`)
+
+- Engage: `SetDspModelParam(Tuner, Enable, bool true)`, then `RegisterDspEvent(Tuner, Note)` (cmd 0x0B).
+  Disengage: `Enable = false`, then cmd 0x0C.
+- Readings arrive as type-2 DSP events `{Tuner, Note, float}`. The float is semitones above A, 0 ≤ v < 12
+  (out of range = no signal). `convertA36TunerValueToNoteCents`: f = 440·2^(v/12) (v ≥ 11.5 wraps to v − 12),
+  nearest note, cents = 1200·log2(f/f_note); i.e. note = round(v) mod 12 (0 = A, 1 = B♭ … 11 = A♭),
+  cents = (v − round(v))·100.
+- The amp's tuner footswitch sends a type-4 param event `Tuner/Enable`; the app then registers for `Note`
+  without setting `Enable` itself. On connect the app reads `Tuner/Enable` to pick up a tuner that is already on.
+- UI (`TunerFragment`): 11-segment bar, segment 5 green when within ±2 cents, others red, per `CENT_SEGMENT`.
 
 ## About the S25 arm64 shim
 

@@ -32,6 +32,7 @@ signal chain, turn effects on and off, and tweak amp and effect settings, much l
 | Fine-tune a value | Hold **Ctrl** and use the mouse wheel over a slider |
 | Change the amp, cab, pedal, delay, reverb… model | Select the block, click **CHANGE MODEL ▾** and pick one (needs the model data import below) |
 | Change the cab's microphone | Select the cab and use the **Mic** row |
+| Tune your guitar | Click **TUNER** (or switch the tuner on at the amp); close the window to turn it off |
 
 Presets you switch on the amp itself show up in the app automatically.
 
@@ -64,6 +65,7 @@ firehawk-cli.exe --port COM4 select 12            # load preset 12
 firehawk-cli.exe --port COM4 set amp Drive 0.7    # knobs are 0..1
 firehawk-cli.exe --port COM4 set reverb @enabled off
 firehawk-cli.exe --port COM4 watch                # print changes made on the amp
+firehawk-cli.exe --port COM4 tuner                # amp tuner: note and cents
 ```
 
 Groups: `amp cab gate wah volume fx1 fx2 fx3 fx4 reverb compressor eq looper`.
@@ -85,9 +87,9 @@ How the Bluetooth protocol works is documented in [PROTOCOL.md](PROTOCOL.md).
 
 ### Making a release
 
-1. Bump `__version__` in `firehawk/__init__.py` and add a `## 1.0.1` section to `CHANGELOG.md`.
+1. Bump `__version__` in `firehawk/__init__.py` and add a `## 1.1.1` section to `CHANGELOG.md`.
 2. Commit and push to `main`.
-3. GitHub Actions runs the tests, builds both `.exe` files, creates tag `v1.0.1` and publishes the release
+3. GitHub Actions runs the tests, builds both `.exe` files, creates tag `v1.1.1` and publishes the release
    with that changelog section as notes (see the *Actions* tab). Pushes without a version bump only run the tests.
 
 ## Credits

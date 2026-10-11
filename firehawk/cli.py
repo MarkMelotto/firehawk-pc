@@ -6,6 +6,7 @@
   python -m firehawk.cli --port COM5 set fx1 @enabled off
   python -m firehawk.cli --port COM5 get amp Drive
   python -m firehawk.cli --port COM5 watch               # print knob/preset events from the unit
+  python -m firehawk.cli --port COM5 tuner               # engage the amp's tuner and print note/cents
   add -v to log every frame (protocol debugging)
 """
 from __future__ import annotations
@@ -15,7 +16,7 @@ import logging
 import sys
 import time
 
-from .device import Firehawk
+from .device import TUNER_NOTES, Firehawk
 
 
 def parse_value(s: str):
@@ -34,6 +35,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("presets")
     sub.add_parser("watch")
+    sub.add_parser("tuner")
     s = sub.add_parser("select"); s.add_argument("number", type=int)
     g = sub.add_parser("get"); g.add_argument("group"); g.add_argument("param")
     st = sub.add_parser("set"); st.add_argument("group"); st.add_argument("param"); st.add_argument("value")
@@ -49,7 +51,7 @@ def main(argv=None) -> int:
               "(Bluetooth settings > More Bluetooth options > COM Ports).", file=sys.stderr)
         return 2
     try:
-        fh.connect(editor=args.cmd in ("get", "set", "watch"))
+        fh.connect(editor=args.cmd in ("get", "set", "watch", "tuner"))
         if args.cmd == "presets":
             for i, n in enumerate(fh.preset_names(), 1):
                 print(f"{i:3d}  {n}")
@@ -65,9 +67,22 @@ def main(argv=None) -> int:
             print("Turn knobs / switch presets on the Firehawk. Ctrl+C to quit.")
             while True:
                 time.sleep(1)
+        elif args.cmd == "tuner":
+            fh.on_tuner = lambda n, c: print(f"\r{TUNER_NOTES[n] if n >= 0 else '-':3s} {c:+6.1f} cents ", end="",
+                                             flush=True)
+            if fh.tuner(True) < 0:
+                print("device refused"); return 1
+            print("Play a string. Ctrl+C to quit.")
+            while True:
+                time.sleep(1)
     except KeyboardInterrupt:
         pass
     finally:
+        if fh.tuner_engaged and args.cmd == "tuner":
+            try:
+                fh.tuner(False)
+            except Exception:  # noqa: BLE001
+                pass
         fh.close()
     return 0
 

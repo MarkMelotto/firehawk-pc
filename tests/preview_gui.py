@@ -34,6 +34,7 @@ class DemoApp(gui.App):
             return orig(mode, cmd, a, src, dst)
         dev._rpc = rpc
         dev.link.start()
+        self.dev = dev
         return fh
 
 if __name__ == "__main__":
@@ -44,4 +45,7 @@ if __name__ == "__main__":
     if "--picker" in sys.argv:          # screenshot helper: open the model picker on FX2
         app.after(9000, lambda: (app.select(next(b for b in app.blocks if b.group == "fx2")),
                                  app.after(1500, app.open_picker)))
+    if "--tuner" in sys.argv:           # screenshot helper: tuner window with a slightly flat E
+        app.after(7000, app.tuner_on)
+        app.after(8500, lambda: app.dev.tuner_note(6.93))
     app.mainloop()

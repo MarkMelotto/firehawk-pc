@@ -172,6 +172,11 @@ class Editor(Service):
         st, mid = struct.unpack_from("<iI", r, 0)
         return self.symbols.name(mid) if st >= 0 else ""
 
+    def register_dsp_event(self, slot: str, event: str, on: bool = True) -> int:
+        """cmd 0xB RegisterDspEvent / 0xC UnregisterDspEvent; events then arrive as type 2 {slot, event, value}."""
+        r = self.call(0xB if on else 0xC, struct.pack("<II", self.symbols.idx(slot), self.symbols.idx(event)))
+        return struct.unpack_from("<i", r, 0)[0]
+
     def set_tempo(self, bpm: float) -> int:
         return struct.unpack_from("<i", self.call(0xE, struct.pack("<f", bpm)), 0)[0]
 

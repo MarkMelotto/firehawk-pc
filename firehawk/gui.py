@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 
 from . import __version__, icons
 from .catalog import LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, pretty, split_cab
-from .device import _EN, Firehawk
+from .device import _EN, TUNER_NOTES, Firehawk
 from .importer import data_dir, has_line6_data, import_apk
 
 log = logging.getLogger("firehawk.gui")
@@ -38,6 +38,67 @@ ENABLE_TO_GROUP = {v: k for k, v in _EN.items()}     # "FX5Enable" -> "reverb"
 
 TILE_W, TILE_H = 68, 81      # block.png (136x162 @xxhdpi) at half size
 ICON_W, ICON_H = 54, 62
+
+
+# TunerFragment.CENT_SEGMENT: cents range -> lit segments of the 11-step bar (5 = in tune)
+CENT_SEGMENTS = [(-51, -36, (0,)), (-36, -26, (0, 1)), (-26, -20, (1,)), (-20, -14, (1, 2)), (-14, -11, (2,)),
+                 (-11, -9, (2, 3)), (-9, -7, (3,)), (-7, -5, (3, 4)), (-5, -3, (4,)), (-3, -2, (4, 5)),
+                 (-2, 2, (5,)), (2, 3, (5, 6)), (3, 5, (6,)), (5, 7, (6, 7)), (7, 9, (7,)), (9, 11, (7, 8)),
+                 (11, 14, (8,)), (14, 20, (8, 9)), (20, 26, (9,)), (26, 36, (9, 10)), (36, 51, (10,))]
+
+
+def cent_segments(cents: float) -> tuple:
+    return next((seg for lo, hi, seg in CENT_SEGMENTS if lo <= cents < hi), ())
+
+
+class TunerWindow(tk.Toplevel):
+    """The app's tuner screen: '>' note '<' over an 11-segment bar (tuner_fragment.xml / TunerView)."""
+    DARK, MID, GREEN, RED = "#333333", "#777777", "#00ff00", "#ff0000"   # tuner_* colours
+    DIM, LIT = "#4a4a4a", "#ffffff"
+
+    def __init__(self, app: "App"):
+        super().__init__(app)
+        self.app = app
+        self.title("Tuner")
+        self.configure(bg=BG)
+        self.geometry(f"560x330+{app.winfo_rootx() + 310}+{app.winfo_rooty() + 150}")
+        self.minsize(360, 220)
+        self.transient(app)
+        self.cv = tk.Canvas(self, bg=BG, highlightthickness=0)
+        self.cv.pack(fill="both", expand=True)
+        self.cv.bind("<Configure>", lambda e: self._draw())
+        self.protocol("WM_DELETE_WINDOW", app.tuner_off)
+        self.bind("<Escape>", lambda e: app.tuner_off())
+        self.note, self.cents = -1, 0.0
+        self._draw()
+
+    def show(self, note: int, cents: float):
+        self.note, self.cents = note, cents
+        self._draw()
+
+    def _draw(self):
+        c = self.cv
+        c.delete("all")
+        w, h = max(c.winfo_width(), 360), max(c.winfo_height(), 220)
+        n, cents = self.note, self.cents
+        if n < 0:
+            up = down = False
+        else:
+            up, down = cents < 2.0, cents > -2.0          # flat -> '>' tune up, sharp -> '<' tune down
+        big = (FONT, max(28, int(h * 0.2)), "normal")
+        top = h * 0.3
+        c.create_text(w / 6, top, text=">", fill=self.LIT if up else self.DIM, font=big)
+        c.create_text(w / 2, top, text=TUNER_NOTES[n] if n >= 0 else "_", fill=TEXT, font=big)
+        c.create_text(5 * w / 6, top, text="<", fill=self.LIT if down else self.DIM, font=big)
+        if n >= 0:
+            c.create_text(w / 2, h * 0.53, text=f"{cents:+.0f} cents", fill=SUB, font=(FONT, 10))
+        step, y0, y1 = (w - 24) / 11, h * 0.62, h - 18
+        lit = cent_segments(cents) if n >= 0 else ()
+        for i in range(11):
+            col = self.DARK if i != 5 else self.MID
+            if i in lit:
+                col = self.GREEN if i == 5 else self.RED
+            c.create_rectangle(12 + i * step + 3, y0, 12 + (i + 1) * step - 3, y1, fill=col, width=0)
 
 
 def _com_ports():
@@ -134,6 +195,7 @@ class App(tk.Tk):
         self.blocks: List[Block] = [Block(g, s) for g, s in CHAIN]
         self.sel: Optional[Block] = None
         self.preset_names: List[str] = []
+        self.tuner_win: Optional[TunerWindow] = None
         self.current_preset = -1
         self._build()
 
@@ -166,6 +228,10 @@ class App(tk.Tk):
                              activebackground="#1460b8", activeforeground=TEXT, font=(FONT, 10, "bold"),
                              padx=14, bd=0, cursor="hand2")
         self.btn.pack(side="right", padx=12, pady=12)
+        self.btn_tuner = tk.Button(top, text="TUNER", command=self.tuner_on, bg=HEADER, fg=TEXT, relief="flat",
+                                   activebackground=HILITE, activeforeground=TEXT, font=(FONT, 10, "bold"),
+                                   padx=12, bd=0, cursor="hand2", state="disabled")
+        self.btn_tuner.pack(side="right", pady=12)
         self.btn_import = tk.Button(top, text="IMPORT FROM APK…", command=self.import_apk, bg=HEADER, fg="#ffd27a",
                                     relief="flat", activebackground=HILITE, activeforeground=TEXT,
                                     font=(FONT, 9, "bold"), bd=0, cursor="hand2")
@@ -527,12 +593,17 @@ class App(tk.Tk):
             fh = self._open(target)
             fh.on_patch = lambda i: self.worker.submit(self._on_patch, i)
             fh.on_param = lambda s, p, v: self.after(0, self._on_device_param, s, p, v)
+            fh.on_tuner = lambda n, c: self.after(0, self._tuner_reading, n, c)
+            fh.on_tuner_state = lambda on: self.after(0, self._tuner_state, on)
             fh.connect()
             self.fh = fh
             self.after(0, self.lbl_status.config,
                        {"text": f"Connected on {target}  ·  firmware {fh.editor.version:#x}"})
             self.after(0, self.btn.config, {"text": "CONNECTED", "bg": "#1d7a2a"})
             self.after(0, self.lbl_preset.config, {"text": "Current tone"})
+            self.after(0, self.btn_tuner.config, {"state": "normal"})
+            if fh.tuner_engaged:
+                self.after(0, self._tuner_state, True)
             self.worker.submit(self._load_chain)
             n = fh.librarian.num_presets()
             names: List[str] = []
@@ -638,7 +709,46 @@ class App(tk.Tk):
                 if b is self.sel:
                     self._draw_rows()
 
+    # ------------------------------------------------------------------ tuner
+    def tuner_on(self):
+        if not self.fh:
+            return
+        self._tuner_state(True)
+        self.worker.submit(self._tuner_set, True)
+
+    def tuner_off(self):
+        self._tuner_state(False)
+        if self.fh and self.fh.tuner_engaged:
+            self.worker.submit(self._tuner_set, False)
+
+    def _tuner_set(self, on: bool):
+        try:
+            st = self.fh.tuner(on)
+        except Exception as e:  # noqa: BLE001
+            log.exception("tuner")
+            st = str(e)
+        if on and not (isinstance(st, int) and st >= 0):
+            self.after(0, self._tuner_state, False)
+            self.after(0, messagebox.showerror, "Tuner", f"The amp did not start its tuner ({st}).")
+
+    def _tuner_state(self, on: bool):
+        """Tuner engaged from here or with the amp's tuner footswitch: open / close the tuner window."""
+        if on and self.tuner_win is None:
+            self.tuner_win = TunerWindow(self)
+        elif not on and self.tuner_win is not None:
+            self.tuner_win.destroy()
+            self.tuner_win = None
+
+    def _tuner_reading(self, note: int, cents: float):
+        if self.tuner_win is not None:
+            self.tuner_win.show(note, cents)
+
     def quit_app(self):
+        if self.fh and self.fh.tuner_engaged:
+            try:
+                self.fh.tuner(False)
+            except Exception:  # noqa: BLE001
+                pass
         if self.fh:
             try:
                 self.fh.close()

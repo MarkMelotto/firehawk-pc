@@ -20,6 +20,20 @@ class SimDevice:
                       'FX3': 'DynamicDelay', 'FX4': 'RezSynth', 'FX5': 'HD_VerbzillaReverb63Spring', 'Looper': 'LooperFx500'}
         for k, v in list(self.chain.items()):
             if v not in self.index: self.chain[k] = next((n for n in self.names if n.startswith(v[:12])), v)
+    def tuner_note(self, value: float):
+        """Send a Tuner/Note DSP event if the host registered for it (semitones above A)."""
+        key = (self.index['Tuner'], self.index['Note'])
+        ed = [k for k, v in self.ports.items() if v['mode'] == 'editor']
+        if ed and key in getattr(self, 'dsp_events', set()):
+            ev = struct.pack('<IIIf', *key, 4, value)
+            self._send(ed[0], 0x3ed, F_DATA, struct.pack('<II', 2, len(ev)) + ev)
+    def footswitch(self, slot: str, param: str, value):
+        """A change made on the amp itself (type-4 param event)."""
+        ed = [k for k, v in self.ports.items() if v['mode'] == 'editor']
+        t, raw = (3, int(value)) if isinstance(value, bool) else (4, struct.unpack('<I', struct.pack('<f', value))[0])
+        self.params[(self.index[slot], self.index[param])] = (t, raw)
+        ev = struct.pack('<IIII', self.index[slot], self.index[param], t, raw)
+        self._send(ed[0], 0x3ed, F_DATA, struct.pack('<II', 4, len(ev)) + ev)
     def feed(self, b):
         self.raw_frames.append(b)
         self.link.feed(b)
@@ -104,6 +118,10 @@ class SimDevice:
             m = self.chain.get(name)
             if m is None or m not in self.index: return struct.pack('<iI', -4, 0)
             return struct.pack('<iI', 0, self.index[m])
+        if mode == 'editor' and cmd in (0xb, 0xc):          # (Un)RegisterDspEvent(slot, event)
+            self.dsp_events = getattr(self, 'dsp_events', set())
+            (self.dsp_events.add if cmd == 0xb else self.dsp_events.discard)(struct.unpack('<II', a))
+            return struct.pack('<i', 0)
         if mode == 1 and cmd == 5: return struct.pack('<I', 3)
         if mode == 1 and cmd == 6:
             i, = struct.unpack('<I', a); name = [b'Clean', b'Crunch', b'Lead'][i]

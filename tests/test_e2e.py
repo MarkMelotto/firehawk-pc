@@ -57,6 +57,30 @@ time.sleep(0.2)
 assert patches == [2], patches
 print('patch event -> preset index', patches)
 print('param events:', [(s, p, round(v, 3) if isinstance(v, float) else v) for s, p, v in params])
+# tuner: engage from the app, readings arrive as Tuner/Note DSP events, footswitch disengages
+readings, states = [], []
+fh.on_tuner = lambda n, c: readings.append((n, round(c, 1)))
+fh.on_tuner_state = states.append
+assert fh.tuner(True) == 0 and fh.tuner_engaged
+dev.tuner_note(7.12)          # E, 12 cents sharp
+dev.tuner_note(11.9)          # A, 10 cents flat
+dev.tuner_note(-1.0)          # no signal
+time.sleep(0.2)
+assert readings == [(7, 12.0), (0, -10.0), (-1, 0.0)], readings
+dev.footswitch('Tuner', 'Enable', False)
+time.sleep(0.3)
+assert not fh.tuner_engaged and states == [True, False], states
+dev.tuner_note(3.0)
+time.sleep(0.1)
+assert len(readings) == 3, 'tuner events after unregister'
+dev.footswitch('Tuner', 'Enable', True)       # tuner switched on at the amp -> app follows
+time.sleep(0.3)
+assert fh.tuner_engaged and states[-1] is True
+dev.tuner_note(3.0)
+time.sleep(0.1)
+assert readings[-1] == (3, 0.0), readings
+assert not any(s == 'Tuner' for s, _p, _v in params), 'tuner events leaked into on_param'
+print('tuner OK:', readings, states)
 time.sleep(1.3)
 assert any(k[0] == 'keep' for k in dev.log), 'no keepalive sent'
 print('keepalives OK; link stats host', fh.link.stats, 'dev', dev.link.stats)
