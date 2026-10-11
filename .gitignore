@@ -1,0 +1,15 @@
+# build output
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+*.log
+
+# Line 6 material: extract from your own APK with tools/extract_assets.py
+firehawk/assets/
+firehawk/*.bin
+firehawk.ico
+re/
+*.apk
+*.so
