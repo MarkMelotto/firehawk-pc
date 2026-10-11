@@ -23,7 +23,8 @@ def models_dir() -> Path:
 
 
 def has_line6_data() -> bool:
-    return any(models_dir().glob("*.models"))
+    """Models + picker groups present (imports from before model switching lack the *Catalog.json files)."""
+    return any(models_dir().glob("*.models")) and (models_dir() / "AmpCatalog.json").exists()
 
 
 def import_apk(apk: "str | Path", dest: "Path | None" = None) -> int:
