@@ -47,6 +47,7 @@ jobs:
           python -m tests.test_e2e
           python -m tests.test_lossy
           python -m tests.test_catalog
+          python -m tests.test_importer
 
       - name: Build
         if: steps.v.outputs.new == 'true' || github.event_name == 'workflow_dispatch'

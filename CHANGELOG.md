@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 — 2026-10-11
+
+- **GET ALL EFFECTS…**: one click downloads the official Line 6 app and installs the effect list, so every block
+  can change model. You can still pick an `.apk` (or `.xapk`) you downloaded yourself.
+
 ## 1.1.0 — 2026-10-11
 
 - Tuner: click **TUNER** to use the amp's built-in tuner, shown like the phone app (note, ">" / "<" arrows and the

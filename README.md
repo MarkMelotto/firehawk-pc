@@ -30,21 +30,28 @@ signal chain, turn effects on and off, and tweak amp and effect settings, much l
 | Edit a block | Click it in the signal chain, then drag the sliders |
 | Turn a block on/off | Double-click it, or use the power button on the right |
 | Fine-tune a value | Hold **Ctrl** and use the mouse wheel over a slider |
-| Change the amp, cab, pedal, delay, reverb… model | Select the block, click **CHANGE MODEL ▾** and pick one (needs the model data import below) |
+| Change the amp, cab, pedal, delay, reverb… model | Select the block, click **CHANGE MODEL ▾** and pick one (needs *Get all effects* below) |
 | Change the cab's microphone | Select the cab and use the **Mic** row |
 | Tune your guitar | Click **TUNER** (or switch the tuner on at the amp); close the window to turn it off |
 
 Presets you switch on the amp itself show up in the app automatically.
 
-### Optional: edit every effect
+### Get all effects (one click)
 
-Out of the box you can edit the amp knobs and switch blocks on and off. To **change models** and see **all settings of every effect**,
-the app needs the effect list from the official *Firehawk Remote* Android app. This is a one-time step:
+Out of the box you can edit the amp knobs, switch blocks on and off and use the tuner. To **change models** and see
+**all settings of every effect**, the app needs the effect list from the official *Line 6 Firehawk Remote* Android app.
+This is a one-time step:
 
-1. Get the app's `.apk` file, for example by exporting it from your Android phone with an "APK extractor" app.
-2. In Firehawk Remote click **IMPORT FROM APK…** and pick the file.
+1. Click **GET ALL EFFECTS…** at the top.
+2. Click **DOWNLOAD AND INSTALL AUTOMATICALLY**. The app downloads the official Android app (about 60 MB), reads
+   the effect list out of it and deletes the download again.
 
-The data stays on your PC (`%LOCALAPPDATA%\FirehawkRemote`); nothing is uploaded.
+If the automatic download doesn't work, click *Open the download page*
+([Softonic](https://firehawk-remote.en.softonic.com/android)), download the `.apk`, and choose
+**I ALREADY HAVE THE .APK FILE…**. An `.apk` exported from your own phone works too.
+
+The effect list stays on your PC (`%LOCALAPPDATA%\FirehawkRemote`); nothing is uploaded. No Line 6 files are
+included in this project.
 
 ### Problems?
 
@@ -79,7 +86,7 @@ python -m firehawk.gui                 # run from source
 python -m tests.test_e2e               # protocol tests against a simulated amp
 python -m tests.test_lossy             # same, with 15 % frame loss
 python -m tests.preview_gui            # GUI against the simulated amp, no hardware needed
-python -m firehawk.importer x.apk      # import model data from the command line
+python -m firehawk.importer x.apk      # import model data (or --download)
 build.bat                              # local .exe build
 ```
 
@@ -87,9 +94,9 @@ How the Bluetooth protocol works is documented in [PROTOCOL.md](PROTOCOL.md).
 
 ### Making a release
 
-1. Bump `__version__` in `firehawk/__init__.py` and add a `## 1.1.1` section to `CHANGELOG.md`.
+1. Bump `__version__` in `firehawk/__init__.py` and add a `## 1.2.1` section to `CHANGELOG.md`.
 2. Commit and push to `main`.
-3. GitHub Actions runs the tests, builds both `.exe` files, creates tag `v1.1.1` and publishes the release
+3. GitHub Actions runs the tests, builds both `.exe` files, creates tag `v1.2.1` and publishes the release
    with that changelog section as notes (see the *Actions* tab). Pushes without a version bump only run the tests.
 
 ## Credits

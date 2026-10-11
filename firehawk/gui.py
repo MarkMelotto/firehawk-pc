@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 from . import __version__, icons
 from .catalog import LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, pretty, split_cab
 from .device import _EN, TUNER_NOTES, Firehawk
-from .importer import data_dir, has_line6_data, import_apk
+from .importer import DOWNLOAD_PAGE, data_dir, download_and_import, has_line6_data, import_apk
 
 log = logging.getLogger("firehawk.gui")
 
@@ -232,7 +232,7 @@ class App(tk.Tk):
                                    activebackground=HILITE, activeforeground=TEXT, font=(FONT, 10, "bold"),
                                    padx=12, bd=0, cursor="hand2", state="disabled")
         self.btn_tuner.pack(side="right", pady=12)
-        self.btn_import = tk.Button(top, text="IMPORT FROM APK…", command=self.import_apk, bg=HEADER, fg="#ffd27a",
+        self.btn_import = tk.Button(top, text="GET ALL EFFECTS…", command=self.get_effects, bg=HEADER, fg="#ffd27a",
                                     relief="flat", activebackground=HILITE, activeforeground=TEXT,
                                     font=(FONT, 9, "bold"), bd=0, cursor="hand2")
         if not has_line6_data():
@@ -470,7 +470,7 @@ class App(tk.Tk):
         b = self.sel
         if not b or not self._can_pick(b):
             if b and b.picker and self.cat.empty:
-                messagebox.showinfo("Change model", "Import the model data first (IMPORT FROM APK… at the top).")
+                messagebox.showinfo("Change model", "Get the effect list first (GET ALL EFFECTS… at the top).")
             return
         syms = self.fh.editor.symbols.index
         base, mic = split_cab(b.model_sid) if b.group == "cab" else (b.model_sid, 0)
@@ -557,24 +557,78 @@ class App(tk.Tk):
         if self.fh:
             self.worker.submit(self.fh.set, b.group, "@enabled", b.enabled)
 
-    def import_apk(self):
-        messagebox.showinfo(
-            "Import model data",
-            "To show every effect's settings, Firehawk Remote reads the model list from the official "
-            "Line 6 Firehawk Remote Android app (.apk file).\n\nNothing is uploaded or shared; the data is "
-            f"stored in {data_dir()}.\n\nPick the .apk file in the next window.")
-        path = filedialog.askopenfilename(title="Select the Firehawk Remote .apk",
-                                          filetypes=[("Android app", "*.apk"), ("All files", "*.*")])
-        if not path:
-            return
-        try:
-            n = import_apk(path)
-        except Exception as e:  # noqa: BLE001 - show any import problem
-            messagebox.showerror("Import failed", str(e))
-            return
+    def get_effects(self):
+        """One-time model data setup: download the official app automatically, or pick a downloaded .apk."""
+        win = tk.Toplevel(self)
+        win.title("Get all effects")
+        win.configure(bg=PANEL)
+        win.geometry(f"500x330+{self.winfo_rootx() + 300}+{self.winfo_rooty() + 120}")
+        win.transient(self)
+        win.resizable(False, False)
+        tk.Label(win, text="Get all effects", fg=TEXT, bg=PANEL, font=(FONT, 15, "bold"), anchor="w").pack(
+            fill="x", padx=20, pady=(18, 6))
+        tk.Label(win, justify="left", anchor="w", wraplength=460, fg="#d0d0d0", bg=PANEL, font=(FONT, 10),
+                 text="To change models and edit every effect, Firehawk Remote reads the effect list from the "
+                      "official Line 6 Firehawk Remote Android app. This is a one-time step; the app file is only "
+                      f"read on this PC and the effect list is kept in {data_dir()}.").pack(fill="x", padx=20)
+        status = tk.Label(win, text="", fg="#ffd27a", bg=PANEL, font=(FONT, 9), anchor="w", wraplength=460,
+                          justify="left")
+        btns = []
+
+        def busy(on: bool):
+            for b in btns:
+                b.config(state="disabled" if on else "normal")
+
+        def auto():
+            busy(True)
+            status.config(text="Downloading the official app (about 60 MB)…")
+
+            def progress(done, total):
+                txt = f"Downloading… {done / 1e6:.0f} MB" + (f" of {total / 1e6:.0f} MB" if total else "")
+                self.after(0, status.config, {"text": txt})
+
+            def run():
+                try:
+                    n = download_and_import(progress)
+                except Exception as e:  # noqa: BLE001 - report and offer the manual route
+                    log.exception("download")
+                    self.after(0, status.config, {"text": f"{e}\n\nUse the download page and pick the file instead."})
+                    self.after(0, busy, False)
+                    return
+                self.after(0, lambda: (win.destroy(), self._effects_ready(n)))
+            threading.Thread(target=run, daemon=True).start()
+
+        def manual():
+            path = filedialog.askopenfilename(parent=win, title="Select the Firehawk Remote app file",
+                                              filetypes=[("Android app", "*.apk *.xapk *.apkm"), ("All files", "*.*")])
+            if not path:
+                return
+            try:
+                n = import_apk(path)
+            except Exception as e:  # noqa: BLE001 - show any import problem
+                status.config(text=str(e))
+                return
+            win.destroy()
+            self._effects_ready(n)
+
+        mk = dict(relief="flat", bd=0, cursor="hand2", font=(FONT, 10, "bold"), padx=14, pady=8)
+        b1 = tk.Button(win, text="DOWNLOAD AND INSTALL AUTOMATICALLY", command=auto, bg=HILITE, fg=TEXT,
+                       activebackground="#1460b8", activeforeground=TEXT, **mk)
+        b1.pack(fill="x", padx=20, pady=(16, 6))
+        b2 = tk.Button(win, text="I ALREADY HAVE THE .APK FILE…", command=manual, bg="#2a2a2a", fg=TEXT,
+                       activebackground="#3a3a3a", activeforeground=TEXT, **mk)
+        b2.pack(fill="x", padx=20)
+        btns += [b1, b2]
+        link = tk.Label(win, text="Open the download page in your browser", fg="#7fa7ff", bg=PANEL,
+                        font=(FONT, 9, "underline"), cursor="hand2")
+        link.pack(anchor="w", padx=20, pady=(8, 0))
+        link.bind("<Button-1>", lambda e: __import__("webbrowser").open(DOWNLOAD_PAGE))
+        status.pack(fill="x", padx=20, pady=(8, 0))
+
+    def _effects_ready(self, n: int):
         self.cat = Catalog()
         self.btn_import.pack_forget()
-        messagebox.showinfo("Import model data", f"Imported {n} model files. All effects are now editable.")
+        messagebox.showinfo("Get all effects", f"Imported {n} effect lists. Every block can now change model.")
         if self.fh:
             self.worker.submit(self._load_chain)
 
