@@ -66,6 +66,7 @@ class Param:
     vmin: float
     vmax: float
     default: object
+    note: str = ""       # "delay" / "mod": SyncSelect shown as a note value like the app
 
 
 @dataclass
@@ -88,6 +89,18 @@ MIC_NAMES = ["57 On Axis", "57 Off Axis", "421 Dynamic", "U67 Condenser"]
 PICKERS = {"amp": ("AmpCatalog.json", ["Clean", "American", "British", "High Gain"]),
            "fx": ("FXCatalog.json", None), "reverb": ("ReverbCatalog.json", None),
            "wah": ("WahCatalog.json", None), "cab": ("CabCatalog.json", None)}
+
+
+# SliderRow.note[]: kParamImageListType_Note_Delay uses it as-is, Note_Mod reversed
+NOTES = ["1/32", "1/16 T", "1/16", "1/16 \u00b7", "1/8 T", "1/8", "1/8 \u00b7", "1/4 T", "1/4", "1/4 \u00b7",
+         "1/2 T", "1/2", "1/2 \u00b7", "Whole"]
+
+
+def note_name(kind: str, v) -> str:
+    i = int(round(float(v))) - 1                     # SyncSelect is 1..14
+    if not 0 <= i < len(NOTES):
+        return str(v)
+    return NOTES[len(NOTES) - 1 - i] if kind == "mod" else NOTES[i]
 
 
 def split_cab(sid: str):
@@ -115,6 +128,9 @@ class Catalog:
                           for p in m.get("params", [])
                           if p.get("name") and p["symbolicID"] not in HIDDEN and "." not in p["symbolicID"]
                           and p.get("valueType", 1) != 3]
+                for p in params:
+                    if p.sid == "SyncSelect":
+                        p.note = "mod" if fam == "mod" else "delay"
                 # newest definition wins (hd files sort after the classic ones)
                 self.models[sid] = Model(sid, m.get("shortname") or m.get("name", sid), fam, params)
 
@@ -157,6 +173,8 @@ def fmt(p: Param, v) -> str:
     """Display like the app: 0..1 knobs as 0-10, ints as-is, bools On/Off."""
     if p.sid == "@mic":
         return MIC_NAMES[int(v)] if 0 <= int(v) < len(MIC_NAMES) else str(v)
+    if p.note:
+        return note_name(p.note, v)
     if p.vtype == 2:
         return "On" if v else "Off"
     if p.vtype == 0:
