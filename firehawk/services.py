@@ -118,13 +118,17 @@ class Service:
         return st >= 0
 
     # ---- rpc ---------------------------------------------------------------
-    def call(self, cmd: int, args: bytes = b"", timeout: float = 5.0) -> bytes:
+    def send(self, cmd: int, args: bytes = b"") -> "queue.Queue[bytes]":
+        """Queue a request and return its reply slot without waiting (requests can be pipelined)."""
         if self.port.closed.is_set():
             raise ConnectionError(f"{self.NAME}: not connected")
         with self._call_lock:                                 # responses are FIFO
             slot: "queue.Queue[bytes]" = queue.Queue(1)
             self._pending.put(slot)
             self.port.write(struct.pack("<II", cmd, len(args)) + args)
+        return slot
+
+    def wait(self, slot: "queue.Queue[bytes]", cmd: int = 0, timeout: float = 5.0) -> bytes:
         deadline = time.monotonic() + timeout
         while True:                                           # wake up early if the link drops
             try:
@@ -134,6 +138,9 @@ class Service:
                     raise ConnectionError(f"{self.NAME}: connection lost") from None
                 if time.monotonic() > deadline:
                     raise TimeoutError(f"{self.NAME}: cmd {cmd} timed out") from None
+
+    def call(self, cmd: int, args: bytes = b"", timeout: float = 5.0) -> bytes:
+        return self.wait(self.send(cmd, args), cmd, timeout)
 
     def _reader(self) -> None:
         while not self.port.closed.is_set():
@@ -163,6 +170,44 @@ class Editor(Service):
     def set_param(self, slot: str, param: str, value) -> int:
         st = self.call(10, struct.pack("<II", self.symbols.idx(slot), self.symbols.idx(param)) + encode_value(value))
         return struct.unpack_from("<i", st, 0)[0]
+
+    def set_param_async(self, slot: str, param: str, value) -> None:
+        """SetDspModelParamAsync: same command, reply not awaited (the app does this while a slider moves)."""
+        self.send(10, struct.pack("<II", self.symbols.idx(slot), self.symbols.idx(param)) + encode_value(value))
+
+    def get_params(self, items):
+        """Pipelined GetDspModelParam for [(slot, param), ...] -> [value or None]."""
+        slots = []
+        for slot, param in items:
+            try:
+                slots.append(self.send(9, struct.pack("<II", self.symbols.idx(slot), self.symbols.idx(param))))
+            except KeyError:
+                slots.append(None)
+        out = []
+        for q in slots:
+            if q is None:
+                out.append(None)
+                continue
+            r = self.wait(q, 9)
+            out.append(decode_value(r[4:12]) if struct.unpack_from("<i", r, 0)[0] >= 0 else None)
+        return out
+
+    def current_models(self, slots):
+        """Pipelined QueryCurrentDspModel -> [model symbol or ""]."""
+        qs = []
+        for slot in slots:
+            try:
+                qs.append(self.send(7, struct.pack("<I", self.symbols.idx(slot))))
+            except KeyError:
+                qs.append(None)
+        out = []
+        for q in qs:
+            if q is None:
+                out.append("")
+                continue
+            st, mid = struct.unpack_from("<iI", self.wait(q, 7), 0)
+            out.append(self.symbols.name(mid) if st >= 0 else "")
+        return out
 
     def get_param(self, slot: str, param: str):
         r = self.call(9, struct.pack("<II", self.symbols.idx(slot), self.symbols.idx(param)))

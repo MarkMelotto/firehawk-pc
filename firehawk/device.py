@@ -167,6 +167,22 @@ class Firehawk:
         slot, p = resolve(group, param)
         return self.editor.set_param(slot, p, value)
 
+    def set_async(self, group: str, param: str, value) -> None:
+        slot, p = resolve(group, param)
+        self.editor.set_param_async(slot, p, value)
+
+    def get_many(self, items):
+        """[(group, param), ...] -> [value or None], one round trip."""
+        res = []
+        for g, p in items:
+            try:
+                res.append(resolve(g, p))
+            except KeyError:
+                res.append(("", ""))
+        vals = self.editor.get_params([r for r in res if r[0]])
+        it = iter(vals)
+        return [next(it) if r[0] else None for r in res]
+
     def get(self, group: str, param: str):
         slot, p = resolve(group, param)
         return self.editor.get_param(slot, p)

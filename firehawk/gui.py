@@ -6,6 +6,7 @@ import os
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional
@@ -415,9 +416,16 @@ class App(tk.Tk):
         b = self.sel
         if not b:
             return []
-        ps = b.model.params if b.model else fallback_params(b.group)
+        ps = list(b.model.params if b.model else fallback_params(b.group))
         if b.group == "cab" and b.model_sid:
             ps = [Param("@mic", "Mic", 0, 0, len(MICS) - 1, 0)] + ps
+        i = next((k for k, p in enumerate(ps) if p.sid == "SyncSelect"), None)
+        if i is not None and i > 0 and ps[i - 1].sid in ("Time", "Speed"):
+            # like the app: a Tempo Sync switch, then either the time/speed slider or the note slider
+            sync = b.values.get("SyncSelect", ps[i].default) not in (0, None)
+            b.values["@temposync"] = sync
+            toggle = Param("@temposync", "Tempo Sync", 2, False, True, sync)
+            ps[i - 1:i + 1] = [toggle, ps[i] if sync else ps[i - 1]]
         return ps
 
     def _draw_rows(self):
@@ -508,9 +516,23 @@ class App(tk.Tk):
                 b.model_sid = split_cab(b.model_sid)[0] + MICS[int(v)]
                 self.worker.set_latest((b.group, "@mic"), lambda sid: self._apply_model(b, sid), b.model_sid)
             return
+        if p.sid == "@temposync":                            # app: sync off = SyncSelect 0, on = last note
+            note = b.values.get("SyncSelect")
+            if note:
+                b.values["_note"] = note
+            p = next(q for q in b.model.params if q.sid == "SyncSelect")
+            v = (b.values.get("_note") or p.default or 6) if v else 0
+            b.values["SyncSelect"] = v
+            self._draw_rows()
+        elif p.sid == "SyncSelect" and v:
+            b.values["_note"] = v
         if self.fh:
             fh = self.fh
-            self.worker.set_latest((b.group, p.sid), lambda val, g=b.group, s=p.sid: fh.set(g, s, val), v)
+
+            def write(val, g=b.group, s=p.sid):                 # like the app's SetDspModelParamAsync:
+                fh.set_async(g, s, val)                         # don't wait for each reply while dragging
+                time.sleep(0.03)
+            self.worker.set_latest((b.group, p.sid), write, v)
 
     # ------------------------------------------------------------ model picker
     def _can_pick(self, b: Block) -> bool:
@@ -801,18 +823,13 @@ class App(tk.Tk):
     def _load_chain(self):
         """Worker thread: which model sits in each block and whether it's on."""
         fh = self.fh
-        for b in self.blocks:
-            try:
-                sid = fh.editor.current_model(b.slot)
-            except Exception:  # noqa: BLE001 - slot not on this unit
-                sid = ""
+        models = fh.editor.current_models([b.slot for b in self.blocks])       # pipelined: one round trip
+        enabled = fh.get_many([(b.group, "@enabled") for b in self.blocks])
+        for b, sid, en in zip(self.blocks, models, enabled):
             b.present = bool(sid) or b.group in ("amp", "cab")
             b.model_sid = sid
             b.model = self.cat.get(sid)
-            try:
-                b.enabled = bool(fh.get(b.group, "@enabled")) if b.group != "amp" else True
-            except Exception:  # noqa: BLE001
-                b.enabled = True
+            b.enabled = True if b.group == "amp" or en is None else bool(en)
             b.values.clear()
         self.after(0, self._chain_loaded)
 
@@ -828,11 +845,10 @@ class App(tk.Tk):
     def _load_block_values(self, b: Block):
         if b.group == "cab" and b.model_sid:
             b.values["@mic"] = split_cab(b.model_sid)[1]
-        for p in (b.model.params if b.model else fallback_params(b.group)):
-            try:
-                b.values[p.sid] = self.fh.get(b.group, p.sid)
-            except Exception:  # noqa: BLE001 - param not addressable on this firmware
-                pass
+        ps = b.model.params if b.model else fallback_params(b.group)
+        for p, v in zip(ps, self.fh.get_many([(b.group, p.sid) for p in ps])):     # one round trip
+            if v is not None:
+                b.values[p.sid] = v
         if b is self.sel:
             self.after(0, self._draw_rows)
 

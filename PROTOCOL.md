@@ -124,6 +124,13 @@ App groups map to DSP slots (`GroupIDToSlotSymbol`, non-AEON):
 
 Parameter names and ranges per model are in `assets/*.models` (JSON). Knob values are normalised to 0..1.
 
+### Tempo sync and fast updates
+
+- `@temposync` is not a device parameter: sync off = `SyncSelect` 0 (the delay then uses `Time`, a mod
+  `Speed`); sync on = `SyncSelect` 1–14 (1 = whole note … 14 = 1/32) (`A36EditBufferContext` sendParamToDevice).
+- Requests may be pipelined: replies come back in order. The app sends slider moves with
+  `SetDspModelParamAsync` (cmd 10 without waiting for the reply).
+
 ### Stream flow control
 
 The amp's stream credit is `512 + bytes it has received` (window 512). The sender must not run past the peer's

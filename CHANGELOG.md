@@ -17,6 +17,10 @@
   curves, EQ gain in dB, gate and compressor thresholds in dB, delay time in ms, modulation speed in Hz, and
   every effect's controls in the app's order (the EQ now shows all four gains). Taken from the official app
   during **GET ALL EFFECTS…** — click it once more after updating.
+- Delays and modulations get the app's **Tempo Sync** switch: on shows the note value, off shows the time in ms
+  (or speed in Hz). Before, the time slider did nothing while the delay was synced to a note.
+- Much faster: block settings and the signal chain are read in one go, and slider moves are sent without
+  waiting for each reply (the amp no longer trails behind through older values).
 - After saving, the saved preset is loaded back into the amp like the phone app does (without it the amp could
   freeze on the next preset switch).
 - After every preset change the app reads the amp's new tone, like the phone app does (the amp could stop

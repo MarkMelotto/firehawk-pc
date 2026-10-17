@@ -51,6 +51,10 @@ assert fh.set('fx1', '@enabled', True) == 0
 assert fh.set('reverb', '@enabled', False) == 0  # AEON: reverb -> FX5Enable
 assert fh.set_model('fx2', 'RezSynth') == 0 and fh.editor.current_model('FX2') == 'RezSynth'
 assert fh.set_model('cab', '2x12BlackfaceStudio57OnAxis') == 0
+assert fh.editor.current_models(['FX2', 'StudioCab', 'NoSuchSlot']) == ['RezSynth', '2x12BlackfaceStudio57OnAxis', '']
+fh.set_async('amp', 'Treble', 0.25)
+vals = fh.get_many([('amp', 'Drive'), ('amp', '@nope'), ('amp', 'Treble')])
+assert vals[1] is None and abs(vals[0] - 0.75) < 1e-6 and abs(vals[2] - 0.25) < 1e-6, vals
 print('model change OK:', fh.editor.current_model('FX2'), '/', fh.editor.current_model('StudioCab'))
 assert fh.select_preset(3) == 0 and dev.preset == 2
 time.sleep(0.2)
