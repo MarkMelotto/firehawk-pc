@@ -81,6 +81,46 @@ time.sleep(0.1)
 assert readings[-1] == (3, 0.0), readings
 assert not any(s == 'Tuner' for s, _p, _v in params), 'tuner events leaked into on_param'
 print('tuner OK:', readings, states)
+# save preset: stored file of the loaded preset, patched with the live edit buffer, written to another slot
+import tempfile
+from pathlib import Path
+from firehawk import preset as pf
+import firehawk.importer as imp
+S = fh.editor.symbols.index
+def tone(name):
+    E = pf.entry
+    return pf.serialize([
+        E(pf.SECTION, pf.T_INT, 2), E(pf.SECTION_VER, pf.T_INT, 7), E(pf.NAME_KEY, pf.T_STR, name),
+        pf.Entry(0x19, pf.T_ARRAY, struct.pack('<I', 200) + bytes(800)),          # kept as-is; > 512-byte window
+        E(pf.SECTION_END, pf.T_NONE, 0),
+        E(pf.SECTION, pf.T_INT, 1), E(pf.SECTION_VER, pf.T_INT, 3),
+        E(pf.SLOT, pf.T_SYM, S['GuitarProc']), E(pf.ASSET, pf.T_SYM, S['GuitarProc']), E(pf.COUNT, pf.T_INT, 2),
+        E(S['FX1EnableState'], pf.T_BOOL, False), E(S['ChannelVolumeState'], pf.T_FLOAT, 0.5),
+        E(pf.SLOT, pf.T_SYM, S['Amp']), E(pf.ASSET, pf.T_SYM, S['HD_AmpBlackfaceDoubleVib']), E(pf.COUNT, pf.T_INT, 2),
+        E(S['DriveState'], pf.T_FLOAT, 0.2), E(S['TrebleState'], pf.T_FLOAT, 0.3), E(pf.SLOT_END, pf.T_NONE, 0),
+        E(pf.SLOT, pf.T_SYM, S['FX2']), E(pf.ASSET, pf.T_SYM, S['AnalogChorus']), E(pf.COUNT, pf.T_INT, 1),
+        E(S['DepthState'], pf.T_FLOAT, 0.1), E(pf.SLOT_END, pf.T_NONE, 0),
+        E(pf.SLOT_END, pf.T_NONE, 0), E(pf.SECTION_END, pf.T_NONE, 0)])
+dev.preset_files = {0: tone('Clean'), 2: tone('Lead')}
+assert pf.serialize(pf.parse(dev.preset_files[0])) == dev.preset_files[0]
+class Cat:
+    device_params = staticmethod(lambda m: [('Speed', 1, 0.5), ('@enabled', 2, True)] if m == 'RezSynth' else [])
+    cab_link = staticmethod(lambda c: '')
+tmpd = Path(tempfile.mkdtemp()); imp.data_dir = lambda: tmpd
+fh.current_preset = 0
+steps = []
+changes = fh.save_preset(2, 'My Tone', Cat(), steps.append)
+saved = pf.parse(dev.preset_files[2])
+assert pf.preset_name(saved) == 'My Tone', pf.preset_name(saved)
+vals = {fh.editor.symbols.name(e.key): e.value for e in saved if e.key < 0x80000000}
+assert abs(vals['DriveState'] - 0.75) < 1e-6 and vals['FX1EnableState'] is True, vals
+assert 'SpeedState' in vals and 'DepthState' not in vals                     # FX2 rebuilt for RezSynth
+models = [fh.editor.symbols.name(e.u32) for e in saved if e.key == pf.ASSET]
+assert models == ['GuitarProc', 'HD_AmpBlackfaceDoubleVib', 'RezSynth'], models
+assert pf.serialize(pf.parse(dev.preset_files[0])) == tone('Clean')         # source untouched
+assert list((tmpd / 'backups').iterdir()), 'no backup of the overwritten preset'
+assert any(e.key == 0x19 and len(e.raw) == 804 for e in saved)
+print('save preset OK:', changes)
 time.sleep(1.3)
 assert any(k[0] == 'keep' for k in dev.log), 'no keepalive sent'
 print('keepalives OK; link stats host', fh.link.stats, 'dev', dev.link.stats)

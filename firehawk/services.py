@@ -199,6 +199,21 @@ class Librarian(Service):
             raise RuntimeError(f"GetPresetName({idx}) -> {st}")
         return r[8:8 + ln].split(b"\0")[0].decode("latin1")
 
+    def get_preset_file(self, idx: int) -> bytes:
+        """cmd 0xB GetPresetFile: the preset as stored (0-based index)."""
+        r = self.call(0xB, struct.pack("<I", idx), timeout=20.0)
+        st, = struct.unpack_from("<i", r, 0)
+        if st < 0:
+            raise RuntimeError(f"GetPresetFile({idx}) -> {st}")
+        return r[4:]
+
+    def set_preset_file(self, idx: int, data: bytes) -> int:
+        """cmd 0xC SetPresetFile {idx, size, data}: overwrite a stored preset (max 32 KB)."""
+        if not data or len(data) > 0x8000:
+            raise ValueError("preset file size")
+        r = self.call(0xC, struct.pack("<II", idx, len(data)) + data, timeout=30.0)
+        return struct.unpack_from("<i", r, 0)[0]
+
     def load_preset(self, idx: int) -> int:
         """Switch the device to hardware preset idx (0-based)."""
         return struct.unpack_from("<i", self.call(0xD, struct.pack("<I", idx)), 0)[0]

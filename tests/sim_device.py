@@ -1,7 +1,7 @@
 """Simulated Firehawk (device side of RSMC + streams + services) for offline tests."""
 import struct, threading, zlib
 from firehawk.rsmc import Rsmc, crc16
-from firehawk.stream import transport_header, F_SYN, F_DATA, F_KEEP, F_FIN, F_HB
+from firehawk.stream import transport_header, F_SYN, F_DATA, F_WND, F_KEEP, F_FIN, F_HB
 
 class SimDevice:
     def __init__(self, table: bytes):
@@ -12,6 +12,7 @@ class SimDevice:
         self.params = {}
         self.preset = 0
         self.log = []
+        self.preset_files = {}
         self.raw_frames = []
         import firehawk.services as _s
         st = _s.SymbolTable(table); self.names, self.index = st.names, st.index
@@ -55,7 +56,9 @@ class SimDevice:
     def _send_raw(self, dst, src, flags, data=b''):
         st = self.ports[dst]
         st['seq'] = (st['seq'] + 1) & 0xff
-        body = struct.pack('<II', (flags << 24) | (st['seq'] << 8), 0x1000) + data
+        # like the amp: credit = 512-byte window + bytes received so far
+        st['adv'] = st.get('rx', 0)
+        body = struct.pack('<II', (flags << 24) | (st['seq'] << 8), 0x200 + st['adv']) + data
         if flags & F_SYN:
             body = struct.pack('<I', 0xe4 << 16) + body
             self.link.send(transport_header(2, len(body), src, dst) + body)
@@ -83,6 +86,10 @@ class SimDevice:
                 self._send(src, dst, F_DATA, q)
         if flags & F_KEEP: self.log.append(('keep', src))
         if not data: return
+        assert st.get('rx', 0) + len(data) <= 0x200 + st.get('adv', 0), ('host overran credit', st.get('rx'), len(data))
+        st['rx'] = st.get('rx', 0) + len(data)
+        if st['rx'] - st.get('adv', 0) >= 0x80:
+            self._send_raw(src, dst, F_WND)
         st['buf'] += data
         if st['mode'] is None and len(st['buf']) >= 4:
             st['mode'], = struct.unpack_from('<I', st['buf']); st['buf'] = st['buf'][4:]
@@ -126,6 +133,12 @@ class SimDevice:
         if mode == 1 and cmd == 6:
             i, = struct.unpack('<I', a); name = [b'Clean', b'Crunch', b'Lead'][i]
             return struct.pack('<iI', 0, len(name) + 1) + name.ljust(64, b'\0')
+        if mode == 1 and cmd == 0xb:                      # GetPresetFile(idx)
+            i, = struct.unpack('<I', a); f = self.preset_files.get(i)
+            return struct.pack('<i', 0) + f if f else struct.pack('<i', -1)
+        if mode == 1 and cmd == 0xc:                      # SetPresetFile(idx, size, data)
+            i, n = struct.unpack_from('<II', a); assert n == len(a) - 8
+            self.preset_files[i] = a[8:]; return struct.pack('<i', 0)
         if mode == 1 and cmd == 0xd:
             self.preset = struct.unpack('<I', a)[0]
             ed = [k for k, v in self.ports.items() if v['mode'] == 'editor']

@@ -100,6 +100,8 @@ Typed value: `{type u32, value}` with 2 = int, 3 = bool, 4 = float32.
 | 5 GetNumPresets | – | count |
 | 6 GetPresetName | idx | status, len, name (variable length on Firehawk 1500) |
 | 7 GetPresetUUID / 8 Checksum / 10 FileSize / 11 GetPresetFile | idx | status, … |
+| 0x0B GetPresetFile | idx | status, file bytes |
+| 0x0C SetPresetFile (0x0F = variant) | idx, size, file bytes | status |
 | 0x0D LoadHardwarePreset | idx (0-based) | status |
 | 0x0E GetPresetInfo | idx | status, 0x58 bytes |
 
@@ -121,6 +123,26 @@ App groups map to DSP slots (`GroupIDToSlotSymbol`, non-AEON):
 `@` params are on slot `GuitarProc`: `FXnEnable`, `FXnPost`, `FXnMix`, `FXnMixType`, `ChannelVolume`, and so on (see `device.py`).
 
 Parameter names and ranges per model are in `assets/*.models` (JSON). Knob values are normalised to 0..1.
+
+### Stream flow control
+
+The amp's stream credit is `512 + bytes it has received` (window 512). The sender must not run past the peer's
+latest credit (taken from SYN/DATA/WND packets); the amp sends WND packets as it consumes data. Needed for
+anything larger than 512 bytes, such as a preset upload.
+
+### Preset files (`L6SPePresetSerializer`, `L6A36Preset::SerializeToDeviceForGroup`)
+
+Flat stream of `{key u32, type u16, value}`; types 0 none, 1 bool, 2 int, 3 float, 4 string `{len incl. NUL,
+bytes}`, 6 array `{count, count×u32}`, 7 symbol index. Directive keys: `0x80000000` section start (1 DSP, 2 PS),
+`…01` section version, `…02` section end, `…03` slot start (symbol), `…04` slot end, `…05` model (symbol),
+`…06` param count, followed by that many `{"<Param>State" symbol: value}`.
+
+- PS section: key 0 = name (≤ 63 bytes), plus tempo, footswitch and other metadata.
+- DSP section: root slot `GuitarProc` (its params: `FX1EnableState`, `ChannelVolumeState`, …) containing the
+  slots Gate, VolumePedal, Wah, FX1–FX5 (`FXnStereo` when stereo), Amp, Air, StudioCab (cab+mic symbol),
+  LiveCab (the cab's `cablink`), PostComp, PostEQ, Looper.
+- Saving the edit buffer (app: `savePresetToDevice`): build the file and `SetPresetFile(idx)`. This app instead
+  reads the stored file, replaces models and `…State` values with live editor values (cmd 7 / 9), and uploads it.
 
 ### Tuner (`A36EditorLibrarian::engageTunerInternal`)
 

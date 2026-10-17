@@ -47,6 +47,9 @@ class StreamPort:
         self._cond = threading.Condition()
         self._last_tx = 0.0
         self._advertised = 0            # rx_total at last credit update we sent
+        self.tx_total = 0               # data bytes sent
+        self.peer_credit: Optional[int] = None   # cumulative bytes the peer accepts (512 + what it consumed)
+        self._tx_cond = threading.Condition()
 
     # ---- tx ----------------------------------------------------------------
     def _emit(self, flags: int, data: bytes = b"") -> None:
@@ -74,9 +77,27 @@ class StreamPort:
         self._emit(F_SYN | F_HB)
         return self.connected.wait(timeout)
 
-    def write(self, data: bytes) -> None:
-        for i in range(0, len(data), MTU - 16):
-            self._emit(F_DATA, data[i:i + MTU - 16])
+    def write(self, data: bytes, timeout: float = 15.0) -> None:
+        """Send, honouring the peer's credit (the amp's window is only 512 bytes)."""
+        i = 0
+        while i < len(data):
+            n = min(MTU - 16, len(data) - i)
+            with self._tx_cond:
+                deadline = time.monotonic() + timeout
+                while self.peer_credit is not None:
+                    room = (self.peer_credit - self.tx_total) & 0xFFFFFFFF
+                    if room >= 0x80000000:                 # peer credit behind us (shouldn't happen)
+                        room = 0
+                    if room > 0:
+                        n = min(n, room)
+                        break
+                    left = deadline - time.monotonic()
+                    if left <= 0 or self.closed.is_set():
+                        raise TimeoutError(f"{self.name}: peer gave no send credit")
+                    self._tx_cond.wait(left)
+                self.tx_total = (self.tx_total + n) & 0xFFFFFFFF
+            self._emit(F_DATA, data[i:i + n])
+            i += n
 
     def keepalive_if_idle(self) -> None:
         if self.connected.is_set() and not self.closed.is_set() and time.monotonic() - self._last_tx >= KEEPALIVE_S:
@@ -109,6 +130,12 @@ class StreamPort:
         flags, seq = wa >> 24, (wa >> 8) & 0xFF
         data = body[8:]
         log.debug("%s RX t%d flags=%02x seq=%d credit=%d len=%d %s", self.name, ptype, flags, seq, _credit, len(data), data[:256].hex(" "))
+        if flags & (F_SYN | F_DATA | F_WND):
+            with self._tx_cond:
+                ahead = (_credit - (self.peer_credit or 0)) & 0xFFFFFFFF
+                if self.peer_credit is None or 0 < ahead < 0x80000000:
+                    self.peer_credit = _credit
+                    self._tx_cond.notify_all()
         if flags & F_SYN:
             self.peer_seq = seq
             self.connected.set()
@@ -127,6 +154,8 @@ class StreamPort:
             self.closed.set()
             with self._cond:
                 self._cond.notify_all()
+            with self._tx_cond:
+                self._tx_cond.notify_all()
 
 
 class Router:

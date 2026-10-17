@@ -6,6 +6,8 @@
   python -m firehawk.cli --port COM5 set fx1 @enabled off
   python -m firehawk.cli --port COM5 get amp Drive
   python -m firehawk.cli --port COM5 watch               # print knob/preset events from the unit
+  python -m firehawk.cli --port COM5 save 12 --name "My Tone"   # store the current tone in preset 12
+  python -m firehawk.cli --port COM5 dump 12             # print (and save) stored preset 12, for debugging
   python -m firehawk.cli --port COM5 tuner               # engage the amp's tuner and print note/cents
   add -v to log every frame (protocol debugging)
 """
@@ -36,6 +38,9 @@ def main(argv=None) -> int:
     sub.add_parser("presets")
     sub.add_parser("watch")
     sub.add_parser("tuner")
+    sv = sub.add_parser("save"); sv.add_argument("number", type=int); sv.add_argument("--name")
+    sv.add_argument("--from", dest="source", type=int, help="preset the current tone was loaded from")
+    dp = sub.add_parser("dump"); dp.add_argument("number", type=int)
     s = sub.add_parser("select"); s.add_argument("number", type=int)
     g = sub.add_parser("get"); g.add_argument("group"); g.add_argument("param")
     st = sub.add_parser("set"); st.add_argument("group"); st.add_argument("param"); st.add_argument("value")
@@ -51,7 +56,7 @@ def main(argv=None) -> int:
               "(Bluetooth settings > More Bluetooth options > COM Ports).", file=sys.stderr)
         return 2
     try:
-        fh.connect(editor=args.cmd in ("get", "set", "watch", "tuner"))
+        fh.connect(editor=args.cmd in ("get", "set", "watch", "tuner", "save", "dump"))
         if args.cmd == "presets":
             for i, n in enumerate(fh.preset_names(), 1):
                 print(f"{i:3d}  {n}")
@@ -67,6 +72,30 @@ def main(argv=None) -> int:
             print("Turn knobs / switch presets on the Firehawk. Ctrl+C to quit.")
             while True:
                 time.sleep(1)
+        elif args.cmd == "save":
+            from .catalog import Catalog
+            if args.source:
+                fh.current_preset = args.source - 1
+            for c in fh.save_preset(args.number - 1, args.name, Catalog(), print) or ["(no changes)"]:
+                print("  " + c)
+            print("saved")
+        elif args.cmd == "dump":
+            from . import preset as pf
+            raw = fh.librarian.get_preset_file(args.number - 1)
+            out = f"preset-{args.number:03d}.bin"
+            open(out, "wb").write(raw)
+            name = fh.editor.symbols.name
+            depth = 0
+            for e in pf.parse(raw):
+                if e.key == pf.SLOT_END:
+                    depth -= 1
+                k = {pf.SECTION: "SECTION", pf.SECTION_VER: "VERSION", pf.SECTION_END: "END", pf.SLOT: "SLOT",
+                     pf.SLOT_END: "SLOT END", pf.ASSET: "MODEL", pf.COUNT: "PARAMS"}.get(e.key) or name(e.key)
+                v = name(e.value) if e.type == pf.T_SYM else e.value
+                print("  " * depth + f"{k} = {v!r}" if not isinstance(v, bytes) else "  " * depth + f"{k} = <{len(v)} bytes>")
+                if e.key == pf.SLOT:
+                    depth += 1
+            print(f"{len(raw)} bytes written to {out}")
         elif args.cmd == "tuner":
             fh.on_tuner = lambda n, c: print(f"\r{TUNER_NOTES[n] if n >= 0 else '-':3s} {c:+6.1f} cents ", end="",
                                              flush=True)

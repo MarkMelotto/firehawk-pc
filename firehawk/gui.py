@@ -281,8 +281,16 @@ class App(tk.Tk):
         # main column
         main = tk.Frame(body, bg=BG)
         main.pack(side="left", fill="both", expand=True)
-        self.lbl_preset = tk.Label(main, text="Not connected", fg=TEXT, bg=BG, font=(FONT, 20, "bold"), anchor="w")
-        self.lbl_preset.pack(fill="x", padx=18, pady=(14, 0))
+        title_row = tk.Frame(main, bg=BG)
+        title_row.pack(fill="x", padx=18, pady=(14, 0))
+        self.btn_save = tk.Button(title_row, text="SAVE", command=self.save_dialog, bg=HILITE, fg=TEXT,
+                                  relief="flat", activebackground="#1460b8", activeforeground=TEXT,
+                                  font=(FONT, 10, "bold"), padx=16, bd=0, cursor="hand2", state="disabled")
+        self.btn_save.pack(side="right", pady=4)
+        self.lbl_preset = tk.Label(title_row, text="Not connected", fg=TEXT, bg=BG, font=(FONT, 20, "bold"),
+                                   anchor="w")
+        self.lbl_preset.pack(side="left", fill="x", expand=True)
+        self.bind("<Control-s>", lambda e: self.save_dialog())
         self.chain = tk.Canvas(main, bg=BG, height=TILE_H + 44, highlightthickness=0)
         self.chain.pack(fill="x", padx=12, pady=(6, 4))
         self.chain.bind("<Configure>", lambda e: self._draw_chain())
@@ -680,6 +688,7 @@ class App(tk.Tk):
             self.after(0, self.btn.config, {"text": "CONNECTED", "bg": "#1d7a2a"})
             self.after(0, self.lbl_preset.config, {"text": "Current tone"})
             self.after(0, self.btn_tuner.config, {"state": "normal"})
+            self.after(0, self.btn_save.config, {"state": "normal"})
             if fh.tuner_engaged:
                 self.after(0, self._tuner_state, True)
             self.worker.submit(self._load_chain)
@@ -786,6 +795,81 @@ class App(tk.Tk):
                 b.values[param] = value
                 if b is self.sel:
                     self._draw_rows()
+
+    # ------------------------------------------------------------------ save
+    def save_dialog(self):
+        """Store the current tone on the amp: pick the preset number and name (like the app's Save screen)."""
+        if not self.fh or not self.preset_names:
+            return
+        cur = self.current_preset if 0 <= self.current_preset < len(self.preset_names) else 0
+        win = tk.Toplevel(self)
+        win.title("Save tone")
+        win.configure(bg=PANEL)
+        win.geometry(f"420x470+{self.winfo_rootx() + 320}+{self.winfo_rooty() + 110}")
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="Save tone to the amp", fg=TEXT, bg=PANEL, font=(FONT, 14, "bold"), anchor="w").pack(
+            fill="x", padx=18, pady=(16, 8))
+        tk.Label(win, text="NAME", fg=SUB, bg=PANEL, font=(FONT, 9, "bold"), anchor="w").pack(fill="x", padx=18)
+        name = tk.StringVar(value=self.preset_names[cur].strip())
+        ent = tk.Entry(win, textvariable=name, bg="#1e1e1e", fg=TEXT, insertbackground=TEXT, relief="flat",
+                       font=(FONT, 12))
+        ent.pack(fill="x", padx=18, pady=(2, 12), ipady=5)
+        tk.Label(win, text="PRESET", fg=SUB, bg=PANEL, font=(FONT, 9, "bold"), anchor="w").pack(fill="x", padx=18)
+        lst = tk.Listbox(win, bg="#1a1a1a", fg="#e6e6e6", selectbackground=HEADER, selectforeground=TEXT,
+                         highlightthickness=0, bd=0, activestyle="none", font=(FONT, 11), exportselection=False)
+        lst.pack(fill="both", expand=True, padx=18, pady=(2, 10))
+        for i, n in enumerate(self.preset_names, 1):
+            lst.insert("end", f"  {i:>3}   {n}")
+        lst.selection_set(cur)
+        lst.see(cur)
+        status = tk.Label(win, text="", fg="#ffd27a", bg=PANEL, font=(FONT, 9), anchor="w", wraplength=380,
+                          justify="left")
+        status.pack(fill="x", padx=18)
+
+        def go(_e=None):
+            sel = lst.curselection()
+            if not sel:
+                return
+            idx, new = sel[0], name.get().strip()[:63]
+            if not new:
+                status.config(text="Give the tone a name.")
+                return
+            if idx != cur and not messagebox.askyesno(
+                    "Save tone", f"Overwrite preset {idx + 1} \"{self.preset_names[idx].strip()}\"?", parent=win):
+                return
+            btn.config(state="disabled")
+            self.worker.submit(self._save, idx, new, win, status, btn)
+        btn = tk.Button(win, text="SAVE", command=go, bg=HILITE, fg=TEXT, relief="flat",
+                        activebackground="#1460b8", activeforeground=TEXT, font=(FONT, 10, "bold"), pady=8, bd=0,
+                        cursor="hand2")
+        btn.pack(fill="x", padx=18, pady=(6, 16))
+        ent.bind("<Return>", go)
+        ent.focus_set()
+        ent.select_range(0, "end")
+
+    def _save(self, idx, name, win, status, btn):
+        """Worker: write the edit buffer to preset idx, then refresh the list."""
+        try:
+            self.fh.current_preset = self.current_preset if self.current_preset >= 0 else None
+            changes = self.fh.save_preset(idx, name, self.cat,
+                                          lambda m: self.after(0, lambda: status.winfo_exists() and status.config(text=m)))
+        except Exception as e:  # noqa: BLE001 - show it in the dialog
+            log.exception("save preset")
+            self.after(0, lambda: (status.config(text=f"Not saved: {e}"), btn.config(state="normal")))
+            return
+        log.info("saved preset %d: %d changes", idx + 1, len(changes))
+        self.preset_names[idx] = self.fh.librarian.preset_name(idx)
+        self.after(0, self._saved, idx, win)
+
+    def _saved(self, idx, win):
+        if win.winfo_exists():
+            win.destroy()
+        self._fill_presets(self.preset_names)
+        if idx != self.current_preset:
+            self.worker.submit(self._select_preset, idx)       # continue on the preset just written
+        self._mark_preset(idx)
+        self.lbl_status.config(text=f"Saved to preset {idx + 1}")
 
     # ------------------------------------------------------------------ tuner
     def tuner_on(self):

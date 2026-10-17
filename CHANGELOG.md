@@ -1,11 +1,18 @@
 # Changelog
 
+## 1.3.0 — 2026-10-17
+
+- **SAVE** (or Ctrl+S): store the current tone on the amp, in the same preset or another one, with a new name.
+  The preset that gets overwritten is backed up first (`%LOCALAPPDATA%\FirehawkRemote\backups`).
+- `firehawk-cli.exe save 12 --name "My Tone"`; `firehawk-cli.exe dump 12` shows a stored preset.
+- HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
+  header and the model picker.
+- Sending large messages now respects the amp's 512-byte receive window.
+
 ## 1.2.0 — 2026-10-11
 
 - **GET ALL EFFECTS…**: one click downloads the official Line 6 app and installs the effect list, so every block
   can change model. You can still pick an `.apk` (or `.xapk`) you downloaded yourself.
-- HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
-  header and the model picker.
 
 ## 1.1.0 — 2026-10-11
 

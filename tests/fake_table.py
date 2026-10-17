@@ -10,7 +10,8 @@ NAMES = ["Amp", "Drive", "Bass", "Mid", "Treble", "Presence", "Master", "Sag", "
         ["GateEnable", "WahEnable", "VolumePedalEnable", "CabEnable", "PostCompEnable", "PostEQEnable",
          "LooperEnable", "HD_AmpBlackfaceDoubleVib", "HD_ColorDrive", "AnalogChorus", "DynamicDelay", "RezSynth",
          "HD_VerbzillaReverb63Spring", "Weeper", "LooperFx500", "2x12BlackfaceStudio57OnAxis",
-         "SharcPodFixedComp", "ParaGraphic4_band", "Tuner", "Enable", "Note"] + \
+         "SharcPodFixedComp", "ParaGraphic4_band", "Tuner", "Enable", "Note",
+         "DriveState", "TrebleState", "FX1EnableState", "ChannelVolumeState", "DepthState", "SpeedState"] + \
         [f"Filler{i:04d}" for i in range(1100)]          # ~30 KB like the real Firehawk 1500 table
 
 

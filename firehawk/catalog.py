@@ -127,6 +127,7 @@ class Catalog:
         folder = folder or models_dir()
         self.folder = folder
         self.models: Dict[str, Model] = {}
+        self.raw: Dict[str, dict] = {}          # model json as shipped (all params, cablink, ...)
         for f in sorted(folder.glob("*.models")):
             for m in json.loads(f.read_text(encoding="utf-8")):
                 sid = m.get("symbolicID", "")
@@ -142,6 +143,7 @@ class Catalog:
                     if p.sid == "SyncSelect":
                         p.note = "mod" if fam == "mod" else "delay"
                 # newest definition wins (hd files sort after the classic ones)
+                self.raw[sid] = m
                 self.models[sid] = Model(sid, m.get("shortname") or m.get("name", sid), fam, params)
 
     def groups(self, kind: str) -> List[tuple]:
@@ -154,6 +156,16 @@ class Catalog:
             return []
         data = json.loads(f.read_text(encoding="utf-8"))
         return [(g, ids) for g, ids in data.items() if only is None or g in only]
+
+    def device_params(self, sid: str) -> List[tuple]:
+        """[(param symbol, valueType, default)] stored in a preset for this model (no '@' / sub-params)."""
+        m = self.raw.get(sid) or self.raw.get(getattr(self.get(sid), "sid", ""), {})
+        return [(p["symbolicID"], p.get("valueType", 1), p.get("default")) for p in m.get("params", [])
+                if not p["symbolicID"].startswith("@") and "." not in p["symbolicID"]
+                and p.get("valueType", 1) != 3]
+
+    def cab_link(self, cab: str) -> str:
+        return (self.raw.get(cab) or {}).get("cablink", "")
 
     @property
     def empty(self) -> bool:

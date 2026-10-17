@@ -49,6 +49,8 @@ if __name__ == "__main__":
     if "--tuner" in sys.argv:           # screenshot helper: tuner window with a slightly flat E
         app.after(7000, app.tuner_on)
         app.after(8500, lambda: app.dev.tuner_note(6.93))
+    if "--save" in sys.argv:            # screenshot helper: the save dialog
+        app.after(9000, app.save_dialog)
     if "--effects" in sys.argv:         # screenshot helper: the Get all effects dialog
         app.after(3000, app.get_effects)
     app.mainloop()
