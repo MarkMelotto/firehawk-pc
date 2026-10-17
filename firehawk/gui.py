@@ -893,13 +893,23 @@ class App(tk.Tk):
 
     def _save(self, idx, name, win, status, btn):
         """Worker: write the edit buffer to preset idx, then refresh the list."""
+        self._saving = True
+        try:
+            self._save_inner(idx, name, win, status, btn)
+        finally:
+            self._saving = False
+
+    def _save_inner(self, idx, name, win, status, btn):
+        def show(text):
+            if status.winfo_exists():
+                status.config(text=text)
         try:
             self.fh.current_preset = self.current_preset if self.current_preset >= 0 else None
-            changes = self.fh.save_preset(idx, name, self.cat,
-                                          lambda m: self.after(0, lambda: status.winfo_exists() and status.config(text=m)))
+            changes = self.fh.save_preset(idx, name, self.cat, lambda m: self.after(0, show, m))
         except Exception as e:  # noqa: BLE001 - show it in the dialog
             log.exception("save preset")
-            self.after(0, lambda: (status.config(text=f"Not saved: {e}"), btn.config(state="normal")))
+            self.after(0, show, f"Not saved: {e}")
+            self.after(0, lambda: btn.winfo_exists() and btn.config(state="normal"))
             return
         log.info("saved preset %d: %d changes", idx + 1, len(changes))
         self.preset_names[idx] = self.fh.librarian.preset_name(idx)
@@ -949,6 +959,10 @@ class App(tk.Tk):
             self.tuner_win.show(note, cents)
 
     def quit_app(self):
+        if getattr(self, "_saving", False) and not messagebox.askyesno(
+                "Firehawk Remote", "A preset is being written to the amp. Quitting now can leave the amp "
+                "needing a restart. Quit anyway?"):
+            return
         fh = self.fh
 
         def bye():
@@ -970,7 +984,13 @@ class App(tk.Tk):
 
 def _setup_log():
     d = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
-    logging.basicConfig(filename=os.path.join(d, "firehawk-debug.log"), filemode="w", level=logging.DEBUG,
+    log_path = os.path.join(d, "firehawk-debug.log")
+    try:                                               # keep the previous run's log for bug reports
+        if os.path.exists(log_path):
+            os.replace(log_path, os.path.join(d, "firehawk-debug.previous.log"))
+    except OSError:
+        pass
+    logging.basicConfig(filename=log_path, filemode="w", level=logging.DEBUG,
                         format="%(asctime)s.%(msecs)03d %(threadName)s %(name)s %(message)s", datefmt="%H:%M:%S")
 
 

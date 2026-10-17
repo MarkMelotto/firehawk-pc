@@ -45,6 +45,8 @@ def preset_label(idx: int) -> str:
 def parse_preset(text: str) -> int:
     """'12C' (bank + letter) or '46' (1-based number) -> 0-based index."""
     t = text.strip().upper()
+    if t in ("EDIT", "CURRENT", "NOW"):                     # the tone playing right now (edit buffer)
+        return 0xFFFFFFFF
     if t and t[-1] in "ABCD" and t[:-1].isdigit():
         return (int(t[:-1]) - 1) * 4 + "ABCD".index(t[-1])
     return int(t) - 1
@@ -97,6 +99,7 @@ class Firehawk:
         self.on_tuner_state: Optional[Callable[[bool], None]] = None       # tuner engaged (app or amp)
         self.tuner_engaged = False
         self.current_preset: Optional[int] = None          # 0-based, from preset events / select_preset
+        self._patch_events = 0
         self._tuner_events = False
         self._tuner_lock = threading.Lock()
 
@@ -149,6 +152,7 @@ class Firehawk:
                 self.on_param(slot, param, value)
         if ev.kind == 3 and len(ev.body) >= 8:                      # {int preset, int ?} typed values
             self.current_preset = struct.unpack_from("<i", ev.body, 4)[0]
+            self._patch_events += 1
             if self.on_patch:
                 self.on_patch(self.current_preset)
         if self.on_event:
@@ -196,43 +200,68 @@ class Firehawk:
 
     def save_preset(self, target: int, name: Optional[str] = None, catalog=None,
                     progress: Optional[Callable[[str], None]] = None) -> list[str]:
-        """Store the amp's current tone (edit buffer) in preset `target` (0-based), optionally renamed.
+        """Store the amp's current tone in preset `target` (0-based), optionally renamed.
 
-        Starts from the stored file of the preset the tone was loaded from (or the target), patches every
-        model and value with the live edit buffer, keeps a backup of the old target, uploads, and reads back.
-        Returns the list of changes written."""
+        The amp serialises its own edit buffer (GetPresetFile(0xFFFFFFFF)); we rename it, back up the preset
+        that gets overwritten, upload with SetPresetFile and read it back. Aborts without writing if the amp
+        switches preset meanwhile. Returns a short list of what was done."""
         from . import preset as pf
         from .importer import data_dir
         say = progress or (lambda m: None)
+        switches = self._patch_events
+        say("Reading the current tone from the amp…")
+        try:
+            data = self.librarian.get_preset_file(self.librarian.EDIT_BUFFER)
+            entries = pf.parse(data)
+            how = "edit buffer"
+        except (RuntimeError, ValueError) as e:            # firmware without edit-buffer read: patch a stored copy
+            log.warning("edit buffer read failed (%s); patching the stored preset instead", e)
+            entries, how = self._patched_copy(target, catalog, say), "patched copy"
+        if pf.serialize(entries) != pf.serialize(pf.parse(pf.serialize(entries))):
+            raise RuntimeError("Unknown preset format on this amp; nothing was saved.")
+        if self._patch_events != switches:
+            raise RuntimeError("The amp switched presets while saving; nothing was saved. Try again.")
+        old = pf.preset_name(entries)
+        if name is not None and name != old:
+            pf.set_name(entries, name)
+        out = pf.serialize(entries)
+
+        say("Backing up the preset that gets overwritten…")
+        bdir = data_dir() / "backups"
+        bdir.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        try:
+            (bdir / f"preset-{preset_label(target)}-{stamp}.bin").write_bytes(self.librarian.get_preset_file(target))
+        except RuntimeError as e:                      # empty slot / unreadable: nothing to back up
+            log.warning("no backup of %s: %s", preset_label(target), e)
+        if self._patch_events != switches:
+            raise RuntimeError("The amp switched presets while saving; nothing was saved. Try again.")
+
+        say(f"Writing preset {preset_label(target)}…")
+        log.info("save %s -> preset %s (%d bytes), name %r -> %r", how, preset_label(target), len(out), old, name)
+        st = self.librarian.set_preset_file(target, out)
+        if st < 0:
+            raise RuntimeError(f"The amp refused the preset (error {st}); nothing was changed.")
+        say("Checking…")
+        if self.librarian.get_preset_file(target) != out:
+            log.warning("read-back of preset %s differs from what was written", preset_label(target))
+        return [f"{how} -> {preset_label(target)}", f"name: {old!r} -> {name or old!r}"]
+
+    def _patched_copy(self, target: int, catalog, say) -> list:
+        """Fallback: stored file of the source preset with every model/value replaced by live editor values."""
+        from . import preset as pf
         src = self.current_preset if self.current_preset is not None and self.current_preset >= 0 else target
         say("Reading the stored preset…")
         orig = self.librarian.get_preset_file(src)
         entries = pf.parse(orig)
         if pf.serialize(entries) != orig:
             raise RuntimeError("Unknown preset format on this amp; nothing was saved.")
-        old_target = orig if src == target else self.librarian.get_preset_file(target)
-        bdir = data_dir() / "backups"
-        bdir.mkdir(parents=True, exist_ok=True)
-        (bdir / f"preset-{target + 1:03d}-{time.strftime('%Y%m%d-%H%M%S')}.bin").write_bytes(old_target)
-
         say("Reading the current tone from the amp…")
-        sym = self.editor.symbols
-        patcher = pf.Patcher(sym, self.editor.current_model, self.editor.get_param,
+        patcher = pf.Patcher(self.editor.symbols, self.editor.current_model, self.editor.get_param,
                              catalog.device_params if catalog else None, catalog.cab_link if catalog else None)
         out = patcher.apply(entries)
-        if name is not None and name != pf.preset_name(out):
-            patcher.changes.append(f"name: {pf.preset_name(out)!r} -> {name!r}")
-            pf.set_name(out, name)
-        data = pf.serialize(out)
-        log.info("save preset %d (from %d), %d bytes, changes:\n  %s", target + 1, src + 1, len(data),
-                 "\n  ".join(patcher.changes) or "(none)")
-        say("Writing to the amp…")
-        st = self.librarian.set_preset_file(target, data)
-        if st < 0:
-            raise RuntimeError(f"The amp refused the preset (error {st}); nothing was changed.")
-        if self.librarian.get_preset_file(target) != data:
-            log.warning("read-back of preset %d differs from what was written", target + 1)
-        return patcher.changes
+        log.info("patched copy of %s, changes:\n  %s", preset_label(src), "\n  ".join(patcher.changes) or "(none)")
+        return out
 
     def preset_names(self) -> list[str]:
         return [self.librarian.preset_name(i) for i in range(self.librarian.num_presets())]

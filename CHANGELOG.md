@@ -4,12 +4,14 @@
 
 - **SAVE** (or Ctrl+S): store the current tone on the amp, in the same preset or another one, with a new name.
   The preset that gets overwritten is backed up first (`%LOCALAPPDATA%\FirehawkRemote\backups`).
-  The dialog starts at the current preset with its name filled in.
+  The dialog starts at the current preset with its name filled in. The amp itself provides the tone that is
+  saved; saving stops without writing if the amp switches preset meanwhile, and quitting during a save asks first.
 - Presets are labelled by bank and letter like on the amp (**1A … 32D**), in the app and the command line.
 - `firehawk-cli.exe save 3C --name "My Tone"`; `firehawk-cli.exe dump 3C` shows a stored preset.
 - HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
   header and the model picker.
 - Delay **Note** values were shown in reverse; they now run from a whole note down to 1/32, like on the amp.
+- The previous run's log is kept as `firehawk-debug.previous.log`.
 - Sending large messages now respects the amp's 512-byte receive window.
 - No more hanging when the amp is off or out of range: connecting gives up after a few seconds with a clear
   message, the COM port is released so you can retry, a lost connection is detected and shown, and closing the

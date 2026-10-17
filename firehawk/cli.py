@@ -7,7 +7,7 @@
   python -m firehawk.cli --port COM5 get amp Drive
   python -m firehawk.cli --port COM5 watch               # print knob/preset events from the unit
   python -m firehawk.cli --port COM5 save 3C --name "My Tone"   # store the current tone in preset 3C
-  python -m firehawk.cli --port COM5 dump 3C             # print (and save) stored preset 3C, for debugging
+  python -m firehawk.cli --port COM5 dump 3C             # print (and save) stored preset 3C; "dump edit" = current tone, for debugging
   python -m firehawk.cli --port COM5 tuner               # engage the amp's tuner and print note/cents
   add -v to log every frame (protocol debugging)
 """
@@ -82,7 +82,7 @@ def main(argv=None) -> int:
         elif args.cmd == "dump":
             from . import preset as pf
             raw = fh.librarian.get_preset_file(args.number)
-            out = f"preset-{preset_label(args.number)}.bin"
+            out = f"preset-{preset_label(args.number) if args.number < 0x10000 else 'edit'}.bin"
             open(out, "wb").write(raw)
             name = fh.editor.symbols.name
             depth = 0

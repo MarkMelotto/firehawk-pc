@@ -134,7 +134,7 @@ class SimDevice:
             i, = struct.unpack('<I', a); name = [b'Clean', b'Crunch', b'Lead'][i]
             return struct.pack('<iI', 0, len(name) + 1) + name.ljust(64, b'\0')
         if mode == 1 and cmd == 0xb:                      # GetPresetFile(idx)
-            i, = struct.unpack('<I', a); f = self.preset_files.get(i)
+            i, = struct.unpack('<I', a); f = self.preset_files.get(i)      # 0xFFFFFFFF = edit buffer
             return struct.pack('<i', 0) + f if f else struct.pack('<i', -1)
         if mode == 1 and cmd == 0xc:                      # SetPresetFile(idx, size, data)
             i, n = struct.unpack_from('<II', a); assert n == len(a) - 8

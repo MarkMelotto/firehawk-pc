@@ -102,6 +102,23 @@ def tone(name):
         E(S['DepthState'], pf.T_FLOAT, 0.1), E(pf.SLOT_END, pf.T_NONE, 0),
         E(pf.SLOT_END, pf.T_NONE, 0), E(pf.SECTION_END, pf.T_NONE, 0)])
 dev.preset_files = {0: tone('Clean'), 2: tone('Lead')}
+# edit buffer (as the amp serialises it) -> preset 1D, renamed
+dev.preset_files[0xFFFFFFFF] = tone('Live Tone')
+assert fh.save_preset(3, 'Edited', None)
+assert pf.preset_name(pf.parse(dev.preset_files[3])) == 'Edited'
+assert pf.serialize([e for e in pf.parse(dev.preset_files[3]) if e.key != pf.NAME_KEY]) == \
+       pf.serialize([e for e in pf.parse(tone('x')) if e.key != pf.NAME_KEY])
+# switching presets mid-save aborts without writing
+orig_get = fh.librarian.get_preset_file
+def get_and_switch(i):
+    r = orig_get(i); fh._patch_events += 1; return r
+fh.librarian.get_preset_file = get_and_switch
+try:
+    fh.save_preset(1, 'Nope', None); raise AssertionError('saved across a preset switch')
+except RuntimeError as e:
+    assert 'switched' in str(e) and 1 not in dev.preset_files
+fh.librarian.get_preset_file = orig_get
+del dev.preset_files[0xFFFFFFFF]            # older firmware: fall back to patching the stored preset
 assert pf.serialize(pf.parse(dev.preset_files[0])) == dev.preset_files[0]
 class Cat:
     device_params = staticmethod(lambda m: [('Speed', 1, 0.5), ('@enabled', 2, True)] if m == 'RezSynth' else [])
