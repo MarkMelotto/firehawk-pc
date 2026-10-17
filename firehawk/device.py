@@ -37,6 +37,8 @@ from .importer import TABLES, data_dir
 CACHED_TABLES = [data_dir() / n for n in TABLES]
 
 
+ANSWER_S = 6.0          # the amp answers the IAP sync within a second when it's there
+
 # TunerFragment.TUNER_NOTE (note 0 = A)
 TUNER_NOTES = ["A", "B\u266d", "B", "C", "D\u266d", "D", "E\u266d", "E", "F", "G\u266d", "G", "A\u266d"]
 
@@ -64,13 +66,16 @@ class Firehawk:
     def __init__(self, transport: Transport):
         self.t = transport
         self.router = Router()
-        self.link = Rsmc(transport.write, self.router.deliver)
+        self.link = Rsmc(transport.write, self.router.deliver, on_error=lambda e: self._lost(str(e)))
         self.editor = Editor(StreamPort(self.link.send, 0x2002, 0x3ED, "editor"))
         self.librarian = Librarian(StreamPort(self.link.send, 0x2003, 0x3EF, "librarian"))
         self.router.add(self.editor.port)
         self.router.add(self.librarian.port)
         self.router.on_unrouted = lambda t, s, d, b: log.info("unrouted %x->%x t%d %s", s, d, t, b.hex(" "))
-        self._reader = Reader(transport, self.link.feed)
+        self._reader = Reader(transport, self.link.feed, on_close=lambda: self._lost("Bluetooth link closed"))
+        self.on_disconnect: Optional[Callable[[str], None]] = None      # link lost after connecting
+        self._closing = False
+        self._lost_once = threading.Event()
         self._ka_stop = threading.Event()
         self.on_param: Optional[Callable[[str, str, object], None]] = None
         self.on_event: Optional[Callable[[Event], None]] = None
@@ -90,6 +95,12 @@ class Firehawk:
         self._reader.start()
         self.link.sync()
         self.link.start()
+        deadline = time.monotonic() + ANSWER_S          # fail fast instead of waiting on every timeout
+        while self.link.stats["rx"] == 0:
+            if self.link.dead or time.monotonic() > deadline:
+                raise ConnectionError("The amp doesn't answer. Is it switched on and paired, is this its Outgoing "
+                                      "COM port, and is the Firehawk app on your phone closed?")
+            time.sleep(0.05)
         threading.Thread(target=self._keepalive, daemon=True).start()
         cached = [p.read_bytes() for p in CACHED_TABLES if p.exists()]
         self.librarian.open()
@@ -213,11 +224,30 @@ class Firehawk:
     def preset_names(self) -> list[str]:
         return [self.librarian.preset_name(i) for i in range(self.librarian.num_presets())]
 
-    def close(self) -> None:
-        self._ka_stop.set()
+    def _lost(self, why: str) -> None:
+        if self._closing or self._lost_once.is_set():
+            return
+        self._lost_once.set()
+        log.warning("connection lost: %s", why)
+        self.link.dead = True
         for p in (self.editor.port, self.librarian.port):
-            p.close()
-        time.sleep(0.3)
+            p.closed.set()                              # wake anything waiting on a reply
+            with p._cond:
+                p._cond.notify_all()
+        if self.on_disconnect:
+            self.on_disconnect(why)
+
+    def close(self) -> None:
+        """Never blocks for long, also when the amp is gone."""
+        self._closing = True
+        self._ka_stop.set()
+        if not self.link.dead:
+            for p in (self.editor.port, self.librarian.port):
+                try:
+                    p.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            time.sleep(0.3)
         self.link.stop()
         self._reader.stop()
         self.t.close()

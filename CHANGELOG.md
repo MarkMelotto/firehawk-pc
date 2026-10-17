@@ -8,6 +8,9 @@
 - HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
   header and the model picker.
 - Sending large messages now respects the amp's 512-byte receive window.
+- No more hanging when the amp is off or out of range: connecting gives up after a few seconds with a clear
+  message, the COM port is released so you can retry, a lost connection is detected and shown, and closing the
+  app never freezes. The CONNECT button becomes DISCONNECT while connected.
 
 ## 1.2.0 — 2026-10-11
 

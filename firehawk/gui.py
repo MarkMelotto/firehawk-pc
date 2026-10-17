@@ -666,6 +666,9 @@ class App(tk.Tk):
 
     # -------------------------------------------------------------- device I/O
     def connect(self):
+        if self.fh:                                     # button acts as DISCONNECT while connected
+            self.disconnect()
+            return
         target = self.port.get().strip()
         if not target:
             messagebox.showinfo("Firehawk Remote", "Choose the Firehawk's Outgoing Bluetooth COM port first.")
@@ -675,8 +678,10 @@ class App(tk.Tk):
         threading.Thread(target=self._connect_worker, args=(target,), daemon=True).start()
 
     def _connect_worker(self, target):
+        fh = None
         try:
             fh = self._open(target)
+            fh.on_disconnect = lambda why: self.after(0, self._disconnected, fh, why)
             fh.on_patch = lambda i: self.worker.submit(self._on_patch, i)
             fh.on_param = lambda s, p, v: self.after(0, self._on_device_param, s, p, v)
             fh.on_tuner = lambda n, c: self.after(0, self._tuner_reading, n, c)
@@ -685,7 +690,7 @@ class App(tk.Tk):
             self.fh = fh
             self.after(0, self.lbl_status.config,
                        {"text": f"Connected on {target}  ·  firmware {fh.editor.version:#x}"})
-            self.after(0, self.btn.config, {"text": "CONNECTED", "bg": "#1d7a2a"})
+            self.after(0, self.btn.config, {"text": "DISCONNECT", "bg": "#1d7a2a", "state": "normal"})
             self.after(0, self.lbl_preset.config, {"text": "Current tone"})
             self.after(0, self.btn_tuner.config, {"state": "normal"})
             self.after(0, self.btn_save.config, {"state": "normal"})
@@ -700,9 +705,44 @@ class App(tk.Tk):
                     self.after(0, self._fill_presets, list(names))
         except Exception as e:  # noqa: BLE001 - show any connect failure to the user
             log.exception("connect failed")
-            self.after(0, messagebox.showerror, "Connection failed", str(e))
+            if fh is not None and self.fh is not fh:
+                try:
+                    fh.close()                          # release the COM port so the next try can open it
+                except Exception:  # noqa: BLE001
+                    pass
+            if self.fh is fh and fh is not None:
+                self.after(0, self._disconnected, fh, str(e))
+                return
+            msg = str(e) or type(e).__name__
+            if "could not open port" in msg.lower() or "access is denied" in msg.lower():
+                msg = (f"Can't open {target}.\n\nUse the Firehawk's *Outgoing* COM port, and close other programs "
+                       f"that may be using it.\n\n({e})")
+            self.after(0, messagebox.showerror, "Connection failed", msg)
             self.after(0, self.lbl_status.config, {"text": "Not connected"})
-            self.after(0, self.btn.config, {"state": "normal", "text": "CONNECT"})
+            self.after(0, self.btn.config, {"state": "normal", "text": "CONNECT", "bg": HILITE})
+
+    def disconnect(self):
+        fh, self.fh = self.fh, None
+        self._reset_ui("Disconnected")
+        if fh:
+            threading.Thread(target=fh.close, daemon=True).start()
+
+    def _disconnected(self, fh, why: str):
+        """Amp switched off / out of range: back to a usable not-connected state."""
+        if self.fh is not fh:
+            return
+        self.fh = None
+        threading.Thread(target=fh.close, daemon=True).start()
+        self._reset_ui("Connection lost — amp off or out of range. Click CONNECT to retry.")
+        log.warning("disconnected: %s", why)
+
+    def _reset_ui(self, status: str):
+        self._tuner_state(False)
+        self.lbl_status.config(text=status)
+        self.btn.config(state="normal", text="CONNECT", bg=HILITE)
+        self.btn_tuner.config(state="disabled")
+        self.btn_save.config(state="disabled")
+        self.lbl_preset.config(text="Not connected")
 
     def _open(self, target):
         return Firehawk.open_port(target)
@@ -906,16 +946,22 @@ class App(tk.Tk):
             self.tuner_win.show(note, cents)
 
     def quit_app(self):
-        if self.fh and self.fh.tuner_engaged:
+        fh = self.fh
+
+        def bye():
             try:
-                self.fh.tuner(False)
+                if fh.tuner_engaged:
+                    fh.tuner(False)
             except Exception:  # noqa: BLE001
                 pass
-        if self.fh:
             try:
-                self.fh.close()
+                fh.close()
             except Exception:  # noqa: BLE001 - closing a dead link
                 pass
+        if fh:                                          # never let a dead link hang the window
+            t = threading.Thread(target=bye, daemon=True)
+            t.start()
+            t.join(2.0)
         self.destroy()
 
 

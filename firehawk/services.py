@@ -13,6 +13,7 @@ import logging
 import queue
 import struct
 import threading
+import time
 import zlib
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
@@ -118,14 +119,21 @@ class Service:
 
     # ---- rpc ---------------------------------------------------------------
     def call(self, cmd: int, args: bytes = b"", timeout: float = 5.0) -> bytes:
+        if self.port.closed.is_set():
+            raise ConnectionError(f"{self.NAME}: not connected")
         with self._call_lock:                                 # responses are FIFO
             slot: "queue.Queue[bytes]" = queue.Queue(1)
             self._pending.put(slot)
             self.port.write(struct.pack("<II", cmd, len(args)) + args)
-        try:
-            return slot.get(timeout=timeout)
-        except queue.Empty:
-            raise TimeoutError(f"{self.NAME}: cmd {cmd} timed out") from None
+        deadline = time.monotonic() + timeout
+        while True:                                           # wake up early if the link drops
+            try:
+                return slot.get(timeout=0.2)
+            except queue.Empty:
+                if self.port.closed.is_set():
+                    raise ConnectionError(f"{self.NAME}: connection lost") from None
+                if time.monotonic() > deadline:
+                    raise TimeoutError(f"{self.NAME}: cmd {cmd} timed out") from None
 
     def _reader(self) -> None:
         while not self.port.closed.is_set():

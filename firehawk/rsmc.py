@@ -53,8 +53,11 @@ def build_frame(seq: int, ack: int, payload: bytes = b"") -> bytes:
 class Rsmc:
     """Owns the transport write side; deliver() is called with each in-order payload."""
 
-    def __init__(self, write: Callable[[bytes], None], deliver: Callable[[bytes], None]):
+    def __init__(self, write: Callable[[bytes], None], deliver: Callable[[bytes], None],
+                 on_error: Optional[Callable[[Exception], None]] = None):
         self._write = write
+        self.on_error = on_error
+        self.dead = False
         self._deliver = deliver
         self._lock = threading.RLock()
         self._rx = bytearray()
@@ -85,6 +88,8 @@ class Rsmc:
 
     def stop(self) -> None:
         self._running = False
+        if self.dead:
+            return
         try:
             self._write(b"IAP x STOP")
         except Exception:  # noqa: BLE001 - link may already be gone
@@ -108,9 +113,18 @@ class Rsmc:
             self._ack_due = False
 
     def _raw(self, frame: bytes) -> None:
+        if self.dead:
+            return
         self.stats["tx"] += 1
         log.debug("TX %s", frame.hex(" "))
-        self._write(frame)
+        try:
+            self._write(frame)
+        except Exception as e:  # noqa: BLE001 - transport gone: stop, report once
+            log.warning("link write failed: %s", e)
+            self.dead = True
+            self._running = False
+            if self.on_error:
+                threading.Thread(target=self.on_error, args=(e,), daemon=True).start()
 
     def _ticker(self) -> None:
         while self._running:

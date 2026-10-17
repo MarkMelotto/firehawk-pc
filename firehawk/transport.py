@@ -26,21 +26,35 @@ class SerialTransport(Transport):
     def __init__(self, port: str):
         import serial  # pyserial
         # baudrate is ignored by the BT virtual COM port but required by the API
-        self._s = serial.Serial(port, 115200, timeout=0.2)
+        # write_timeout: with the amp off/out of range a BT COM port write can otherwise block forever
+        self._s = serial.Serial(port, 115200, timeout=0.2, write_timeout=2)
 
     def write(self, data: bytes) -> None:
-        self._s.write(data)
-        self._s.flush()
+        import serial
+        try:
+            self._s.write(data)
+        except (serial.SerialTimeoutException, serial.SerialException, OSError) as e:
+            raise ConnectionError(f"Bluetooth link lost ({e})") from e
 
     def read(self, n: int = 256) -> bytes:
-        while self._s.is_open:
-            chunk = self._s.read(n)
-            if chunk:
-                return chunk
+        try:
+            while self._s.is_open:
+                chunk = self._s.read(n)
+                if chunk:
+                    return chunk
+        except Exception:  # noqa: BLE001 - port gone (amp off, adapter removed, closed)
+            pass
         return b""
 
     def close(self) -> None:
-        self._s.close()
+        try:
+            self._s.cancel_read()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self._s.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 class RfcommTransport(Transport):

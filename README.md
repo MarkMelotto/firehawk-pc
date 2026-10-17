@@ -57,6 +57,7 @@ included in this project.
 ### Problems?
 
 - **"Cannot open COM…"** — wrong port, or the amp is off / not paired. Use the *Outgoing* port.
+- **"The amp doesn't answer"** — the amp is off, out of range, or the phone app is still connected to it.
 - **Connects but nothing loads** — close the phone app, switch the amp off and on, and try again.
 - Still stuck? Open an [issue](https://github.com/MarkMelotto/firehawk-pc/issues) and attach
   `firehawk-debug.log`, which is written next to `FirehawkRemote.exe`.
