@@ -30,6 +30,8 @@ signal chain, turn effects on and off, and tweak amp and effect settings, much l
 | Edit a block | Click it in the signal chain, then drag the sliders |
 | Turn a block on/off | Double-click it, or use the power button on the right |
 | Fine-tune a value | Hold **Ctrl** and use the mouse wheel over a slider |
+| Set an exact value (e.g. delay 375 ms) | Click the value on the right of the slider and type it |
+| Put a block on a floorboard switch | Select the block, choose **Footswitch 1–5** next to its power button, then SAVE |
 | Change the amp, cab, pedal, delay, reverb… model | Select the block, click **CHANGE MODEL ▾** and pick one (needs *Get all effects* below) |
 | Change the cab's microphone | Select the cab and use the **Mic** row |
 | Save your changes to the amp | Click **SAVE** (or Ctrl+S), keep or change the name, pick the preset number |

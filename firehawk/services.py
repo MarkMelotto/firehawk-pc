@@ -230,6 +230,18 @@ class Editor(Service):
         r = self.call(0xB if on else 0xC, struct.pack("<II", self.symbols.idx(slot), self.symbols.idx(event)))
         return struct.unpack_from("<i", r, 0)[0]
 
+    def get_pskey(self, key: int):
+        """cmd 0x14 GetPresetPSKeyParam: per-preset setting such as footswitch assignments."""
+        r = self.call(0x14, struct.pack("<I", key))
+        st, = struct.unpack_from("<i", r, 0)
+        if st < 0:
+            raise RuntimeError(f"GetPresetPSKeyParam({key}) -> {st}")
+        return decode_value(r[4:12])
+
+    def set_pskey(self, key: int, value) -> int:
+        """cmd 0x13 SetPresetPSKeyParam."""
+        return struct.unpack_from("<i", self.call(0x13, struct.pack("<I", key) + encode_value(value)), 0)[0]
+
     def set_tempo(self, bpm: float) -> int:
         return struct.unpack_from("<i", self.call(0xE, struct.pack("<f", bpm)), 0)[0]
 

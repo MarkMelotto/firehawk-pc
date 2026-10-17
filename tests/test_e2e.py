@@ -55,6 +55,13 @@ assert fh.editor.current_models(['FX2', 'StudioCab', 'NoSuchSlot']) == ['RezSynt
 fh.set_async('amp', 'Treble', 0.25)
 vals = fh.get_many([('amp', 'Drive'), ('amp', '@nope'), ('amp', 'Treble')])
 assert vals[1] is None and abs(vals[0] - 0.75) < 1e-6 and abs(vals[2] - 0.25) < 1e-6, vals
+assert fh.footswitches() == [None] * 5
+assert fh.assign_footswitch(1, 'fx3', 9, 'DynamicDelay', True) == 0
+assert fh.assign_footswitch(3, 'reverb', 10) == 0
+assert fh.footswitches() == [None, 'fx3', None, 'reverb', None], fh.footswitches()
+assert dev.pskeys[10 + 3] == (2, 5) and dev.pskeys[12 + 3] == (3, 1)
+assert fh.assign_footswitch(1, None) == 0 and fh.footswitches()[1] is None
+print('footswitches OK')
 print('model change OK:', fh.editor.current_model('FX2'), '/', fh.editor.current_model('StudioCab'))
 assert fh.select_preset(3) == 0 and dev.preset == 2
 time.sleep(0.2)

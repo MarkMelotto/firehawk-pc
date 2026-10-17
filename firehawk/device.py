@@ -68,6 +68,20 @@ def tuner_reading(v: float) -> tuple[int, float]:
     return n % 12, (v - n) * 100.0
 
 
+# FBV footswitches FS1..FS5 (FootSwitchView.FootSwitchSlots); PS keys per switch i (0-based):
+# 10+3i effect type, 11+3i the block's GuitarProc enable symbol, 12+3i its on/off state
+# (FirmwareServiceInterfaceEditor::SetFootswitchAssign)
+FOOTSWITCHES = 5
+ENABLE_GROUP = {v: k for k, v in _EN.items()}
+
+
+def effect_type(category: int, model_sid: str = "") -> int:
+    """ModelIDToEffectType: model category -> footswitch effect type."""
+    if category == 4 and model_sid == "SharcPodFixedComp":
+        return 10
+    return {2: 1, 3: 9, 4: 9, 5: 7, 6: 7, 7: 7, 8: 4, 9: 5, 10: 3, 12: 8, 14: 9}.get(category, 0)
+
+
 def resolve(group: str, param: str) -> tuple[str, str]:
     """App-level (group, param) -> device (slot, param), as GetDSPSlotForGroupAndParam."""
     if param.startswith("@"):
@@ -217,6 +231,29 @@ class Firehawk:
             self.tuner_engaged = on
         if changed and self.on_tuner_state:
             self.on_tuner_state(on)
+
+    def footswitches(self) -> list:
+        """Block group on FS1..FS5 for the current tone (None = unassigned)."""
+        qs = [self.editor.send(0x14, struct.pack("<I", 11 + 3 * i)) for i in range(FOOTSWITCHES)]
+        out = []
+        for q in qs:
+            r = self.editor.wait(q, 0x14)
+            st, typ, val = struct.unpack_from("<iIi", r, 0)
+            out.append(ENABLE_GROUP.get(self.editor.symbols.name(val)) if st >= 0 and val >= 0 else None)
+        return out
+
+    def assign_footswitch(self, fs: int, group: Optional[str], category: int = 0, model_sid: str = "",
+                          enabled: bool = True) -> int:
+        """Put a block on footswitch fs (0-based) for this tone, or clear it (group None)."""
+        if group is None:
+            sym, etype, enabled = -1, 0, False
+        else:
+            sym, etype = self.editor.symbols.idx(_EN[group]), effect_type(category, model_sid)
+        for key, value in ((11 + 3 * fs, sym), (10 + 3 * fs, etype), (12 + 3 * fs, bool(enabled))):
+            st = self.editor.set_pskey(key, value)
+            if st < 0:
+                return st
+        return 0
 
     def select_preset(self, number: int) -> int:
         """number is 1-based as shown on the unit."""

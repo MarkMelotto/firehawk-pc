@@ -244,6 +244,23 @@ def frac(p: Param, v) -> float:
     return 0.0 if p.vmax == p.vmin else min(1.0, max(0.0, (float(v) - p.vmin) / (p.vmax - p.vmin)))
 
 
+def parse_value(p: Param, text: str):
+    """What the user typed in the units shown (ms, Hz, kHz, dB, %) -> device value, or None."""
+    import re
+    t = text.strip().lower().replace(",", ".")
+    m = re.match(r"^([-+]?\d*\.?\d+)\s*(k?)", t)
+    if not m:
+        return None
+    d = float(m.group(1)) * (1000 if m.group(2) == "k" else 1)          # "1.2k" / "1.2 kHz"
+    if p.layout is not None:
+        return p.layout.from_display(d)
+    if p.vtype == 0:
+        return int(round(min(max(d, p.vmin), p.vmax)))
+    if p.vmin == 0 and p.vmax == 1:
+        return round(min(max(d / 100.0, 0.0), 1.0), 5)
+    return min(max(d, p.vmin), p.vmax)
+
+
 def value_at(p: Param, f: float):
     """Device value for a slider position 0..1."""
     if p.layout is not None:

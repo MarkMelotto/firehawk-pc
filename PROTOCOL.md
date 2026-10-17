@@ -93,6 +93,7 @@ Typed value: `{type u32, value}` with 2 = int, 3 = bool, 4 = float32.
 | 10 SetDspModelParam | slot, param, typedValue | status |
 | 0x0B / 0x0C (Un)RegisterDspEvent | slot, event | status |
 | 0x0E SetGlobalTempo | float | status |
+| 0x13 / 0x14 Set/GetPresetPSKeyParam | key (, typedValue) | status (, typedValue) |
 | 0x11/0x12 Get/SetPersistentSysParam, 0x13/0x14 PSKey, 0x15/0x16 SystemSetting | | |
 
 | Librarian cmd | args | response |
@@ -123,6 +124,13 @@ App groups map to DSP slots (`GroupIDToSlotSymbol`, non-AEON):
 `@` params are on slot `GuitarProc`: `FXnEnable`, `FXnPost`, `FXnMix`, `FXnMixType`, `ChannelVolume`, and so on (see `device.py`).
 
 Parameter names and ranges per model are in `assets/*.models` (JSON). Knob values are normalised to 0..1.
+
+### Footswitch assignments (`SetFootswitchAssign`)
+
+Per-tone PS keys, set with editor cmd 0x13 `SetPresetPSKeyParam {key, typedValue}` (0x14 reads one back).
+For FBV switch i (0-based, FS1–FS5): key `11+3i` = symbol index of the block's GuitarProc enable parameter
+(`FX3Enable`, …; −1 = none), key `10+3i` = effect type (`ModelIDToEffectType` of the model category), key
+`12+3i` = the block's on/off state (bool).
 
 ### Tempo sync and fast updates
 

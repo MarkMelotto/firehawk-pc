@@ -81,6 +81,14 @@ class Layout:
         v = self.to_param(c)
         return int(round(v)) if self.is_int else round(v, 4)
 
+    def from_display(self, d: float):
+        """Typed display value (e.g. 375 ms, 1200 Hz, -6 dB, 40 %) -> device value."""
+        if self.curve in _EQ:
+            v = _eq_table_inverse(float(d), _EQ[self.curve][1])
+        else:
+            v = self.to_param(_lin(float(d), *self.disp, *self.ctl))
+        return int(round(v)) if self.is_int else round(v, 5)
+
     def text(self, v) -> str:
         d = self.to_display(self.to_control(float(v)))
         f = self.fmt
@@ -132,6 +140,16 @@ def _eq_table(x, table):
     v = max(x, 0.0) * 8.0
     i = int(math.floor(v))
     return table[i] + (table[i + 1] - table[i]) * (v - i)
+
+
+def _eq_table_inverse(x, table):
+    """XTEQFreqDisplayCurve(toDisplay=false): Hz -> 0..1."""
+    if x <= table[0]:
+        return 0.0
+    for i in range(1, 9):
+        if table[i - 1] <= x <= table[i]:
+            return (i - 1 + (x - table[i - 1]) / (table[i] - table[i - 1])) / 8.0
+    return 1.0
 
 
 # ---------------------------------------------------------------- extraction from the APK's .so

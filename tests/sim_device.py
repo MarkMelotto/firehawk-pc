@@ -130,6 +130,12 @@ class SimDevice:
             self.dsp_events = getattr(self, 'dsp_events', set())
             (self.dsp_events.add if cmd == 0xb else self.dsp_events.discard)(struct.unpack('<II', a))
             return struct.pack('<i', 0)
+        if mode == 'editor' and cmd == 0x13:                # SetPresetPSKeyParam(key, typed)
+            k, t, v = struct.unpack('<IIi', a); self.pskeys = getattr(self, 'pskeys', {}); self.pskeys[k] = (t, v)
+            return struct.pack('<i', 0)
+        if mode == 'editor' and cmd == 0x14:
+            k, = struct.unpack('<I', a); t, v = getattr(self, 'pskeys', {}).get(k, (2, -1))
+            return struct.pack('<iIi', 0, t, v)
         if mode == 1 and cmd == 5: return struct.pack('<I', 3)
         if mode == 1 and cmd == 6:
             i, = struct.unpack('<I', a); name = [b'Clean', b'Crunch', b'Lead'][i]

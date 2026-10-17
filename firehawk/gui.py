@@ -8,12 +8,13 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import simpledialog, filedialog, messagebox, ttk
 from typing import Dict, List, Optional
 
 from . import __version__, icons
-from .catalog import LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, frac, pretty, split_cab, value_at
-from .device import _EN, TUNER_NOTES, Firehawk, preset_label
+from .catalog import (LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, frac, parse_value, pretty,
+                      split_cab, value_at)
+from .device import _EN, FOOTSWITCHES, TUNER_NOTES, Firehawk, preset_label
 from .importer import DOWNLOAD_PAGE, data_dir, download_and_import, has_line6_data, import_apk
 
 log = logging.getLogger("firehawk.gui")
@@ -111,6 +112,9 @@ class TunerWindow(tk.Toplevel):
             if i in lit:
                 col = self.GREEN if i == 5 else self.RED
             c.create_rectangle(12 + i * step + 3, y0, 12 + (i + 1) * step - 3, y1, fill=col, width=0)
+
+
+VALUE_W = 120         # right-hand part of a slider row: click it to type a value
 
 
 def row_of(idx: int) -> int:
@@ -230,6 +234,7 @@ class App(tk.Tk):
         self.blocks: List[Block] = [Block(g, s) for g, s in CHAIN]
         self.sel: Optional[Block] = None
         self.preset_names: List[str] = []
+        self.fs: List[Optional[str]] = [None] * FOOTSWITCHES       # block group on each footswitch
         self.tuner_win: Optional[TunerWindow] = None
         self.current_preset = -1
         self._build()
@@ -330,6 +335,12 @@ class App(tk.Tk):
         self.lbl_change.bind("<Button-1>", lambda e: self.open_picker())
         self.btn_power = tk.Canvas(ed, width=40, height=40, bg=BG, highlightthickness=0, cursor="hand2")
         self.btn_power.pack(side="right")
+        # footswitch assignment of the selected block (FS1..FS5 on the FBV), like the app's footswitch view
+        self.fs_var = tk.StringVar(value="")
+        self.cb_fs = ttk.Combobox(ed, textvariable=self.fs_var, state="readonly", width=14, style="Dark.TCombobox",
+                                  values=["No footswitch"] + [f"Footswitch {i + 1}" for i in range(FOOTSWITCHES)])
+        self.cb_fs.bind("<<ComboboxSelected>>", lambda e: self._fs_chosen())
+        self.lbl_fs = tk.Label(ed, text="FOOTSWITCH", fg=SUB, bg=BG, font=(FONT, 8, "bold"))
         self.btn_power.bind("<Button-1>", lambda e: self.toggle_selected())
 
         # slider rows
@@ -370,6 +381,9 @@ class App(tk.Tk):
             icons.glyph(c, b.family, x + TILE_W // 2, 8 + TILE_H // 2, ICON_W, b.look.color, dim=not b.enabled)
             if b.hd:
                 hd_badge(c, x + TILE_W - 6, 13, dim=not b.enabled)
+            if b.group in self.fs:
+                c.create_text(x + 6, 8 + TILE_H - 5, text=f"FS{self.fs.index(b.group) + 1}", anchor="sw",
+                              fill="#ffd27a", font=(FONT, 7, "bold"))
             label = b.title if len(b.title) <= 12 else b.title[:11] + "…"
             c.create_text(x + TILE_W // 2, 8 + TILE_H + 12, text=label, fill=TEXT if b.enabled else "#666",
                           font=(FONT, 8, "bold" if sel else "normal"))
@@ -411,6 +425,42 @@ class App(tk.Tk):
         self.btn_power.delete("all")
         if b.group != "amp":
             icons.power(self.btn_power, 20, 21, 14, b.enabled)
+        if self.fh and b.group in _EN and b.present and b.model_sid:
+            cur = next((i for i, g in enumerate(self.fs) if g == b.group), None)
+            self.fs_var.set("No footswitch" if cur is None else f"Footswitch {cur + 1}")
+            self.cb_fs.pack(side="right", padx=(0, 12))
+            self.lbl_fs.pack(side="right", padx=(0, 6))
+        else:
+            self.cb_fs.pack_forget()
+            self.lbl_fs.pack_forget()
+
+    def _fs_chosen(self):
+        b = self.sel
+        if not b or not self.fh:
+            return
+        choice = self.fs_var.get()
+        new = None if choice == "No footswitch" else int(choice.split()[-1]) - 1
+        old = next((i for i, g in enumerate(self.fs) if g == b.group), None)
+        if new == old:
+            return
+        if old is not None:
+            self.fs[old] = None
+        if new is not None:
+            self.fs[new] = b.group                               # replaces whatever was on that switch
+        self._draw_chain()
+        raw = self.cat.raw.get(b.model_sid) or self.cat.raw.get(getattr(b.model, "sid", ""), {})
+        self.worker.submit(self._assign_fs, b, old, new, raw.get("category", 0))
+
+    def _assign_fs(self, b, old, new, category):
+        if old is not None:
+            self.fh.assign_footswitch(old, None)
+        if new is not None:
+            st = self.fh.assign_footswitch(new, b.group, category, b.model_sid, b.enabled)
+            if st < 0:
+                self.after(0, messagebox.showerror, "Footswitch", f"The amp refused the assignment (error {st}).")
+        self.fs = self.fh.footswitches()
+        self.after(0, self._draw_chain)
+        self.after(0, self._update_editor_header)
 
     def _params(self) -> List[Param]:
         b = self.sel
@@ -481,11 +531,26 @@ class App(tk.Tk):
         p = self._hit(ev)
         if not p or not self.sel:
             return
+        if p.vtype != 2 and p.sid != "@mic" and ev.x > max(self.rows.winfo_width(), 300) - VALUE_W:
+            self._type_value(p)                             # click the value to type an exact one
+            return
         if p.vtype == 2:
             self._send(self.sel, p, not bool(self.sel.values.get(p.sid, p.default)))
             return
         self._drag = p
         self._send(self.sel, p, self._value_at(p, ev.x))
+
+    def _type_value(self, p: Param):
+        b = self.sel
+        cur = fmt(p, b.values.get(p.sid, p.default) if b.values.get(p.sid, p.default) is not None else 0)
+        txt = simpledialog.askstring("Set value", f"{p.name} (now {cur}):", parent=self, initialvalue=cur)
+        if txt is None:
+            return
+        v = parse_value(p, txt)
+        if v is None:
+            messagebox.showerror("Set value", f"'{txt}' is not a number.")
+            return
+        self._send(b, p, v)
 
     def _row_drag(self, ev):
         if self._drag and self.sel:
@@ -831,6 +896,10 @@ class App(tk.Tk):
             b.model = self.cat.get(sid)
             b.enabled = True if b.group == "amp" or en is None else bool(en)
             b.values.clear()
+        try:
+            self.fs = fh.footswitches()
+        except Exception:  # noqa: BLE001 - informational
+            log.exception("footswitches")
         self.after(0, self._chain_loaded)
 
     def _chain_loaded(self):
