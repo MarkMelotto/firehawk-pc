@@ -148,6 +148,14 @@ bytes}`, 6 array `{count, count×u32}`, 7 symbol index. Directive keys: `0x80000
 - A `SetPresetFile` cut off half-way (app killed mid-upload) can leave the librarian waiting for the rest; switch
   the amp off and on.
 
+### How the app displays values (`libSlidersLogicLib.so`)
+
+Not part of the protocol, but needed to show values like the app. `ParamLayoutDefs` (0x38 bytes: layoutID, UI
+type, control min/max, detents, image list, param curve, param min/max, isInt, display curve, display min/max,
+format) and per model a `ModelPanelViewDef` (model id + 12 × {layoutID, param symbol, image}). Device value →
+control value (linear, or a two-segment EQ frequency curve) → display value (linear, or a 9-point Hz table) →
+text by format (% / dB / Hz / ms / …). Knobs are 0–100 %, not 0–10. Extracted from the user's APK at import.
+
 ### Tuner (`A36EditorLibrarian::engageTunerInternal`)
 
 - Engage: `SetDspModelParam(Tuner, Enable, bool true)`, then `RegisterDspEvent(Tuner, Note)` (cmd 0x0B).

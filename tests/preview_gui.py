@@ -49,6 +49,9 @@ if __name__ == "__main__":
     if "--tuner" in sys.argv:           # screenshot helper: tuner window with a slightly flat E
         app.after(7000, app.tuner_on)
         app.after(8500, lambda: app.dev.tuner_note(6.93))
+    if "--select" in sys.argv:          # screenshot helper: select a block, e.g. --select eq
+        g = sys.argv[sys.argv.index("--select") + 1]
+        app.after(9000, lambda: app.select(next(b for b in app.blocks if b.group == g)))
     if "--save" in sys.argv:            # screenshot helper: the save dialog
         app.after(9000, app.save_dialog)
     if "--effects" in sys.argv:         # screenshot helper: the Get all effects dialog

@@ -27,8 +27,9 @@ def models_dir() -> Path:
 
 
 def has_line6_data() -> bool:
-    """Models + picker groups present (imports from before model switching lack the *Catalog.json files)."""
-    return any(models_dir().glob("*.models")) and (models_dir() / "AmpCatalog.json").exists()
+    """Models, picker groups and slider layouts present (older imports lack *Catalog.json / sliders.json)."""
+    d = models_dir()
+    return any(d.glob("*.models")) and (d / "AmpCatalog.json").exists() and (d / "sliders.json").exists()
 
 
 # official Line 6 app on Google Play; these mirrors serve it as a direct download (tried in order)
@@ -49,6 +50,43 @@ def _find_assets_zip(z: zipfile.ZipFile, depth: int = 0) -> Optional[zipfile.Zip
                 if inner:
                     return inner
     return None
+
+
+SLIDER_LIBS = ["lib/x86/libSlidersLogicLib.so", "lib/armeabi-v7a/libSlidersLogicLib.so",
+               "lib/armeabi/libSlidersLogicLib.so"]
+
+
+def _find_member(z: zipfile.ZipFile, names, depth: int = 0) -> Optional[bytes]:
+    """First of `names` in the zip or in an .apk nested in it (split APKs keep native libs separately)."""
+    have = set(z.namelist())
+    for n in names:
+        if n in have:
+            return z.read(n)
+    if depth < 2:
+        for n in z.namelist():
+            if n.lower().endswith(".apk"):
+                r = _find_member(zipfile.ZipFile(io.BytesIO(z.read(n))), names, depth + 1)
+                if r:
+                    return r
+    return None
+
+
+def _import_sliders(outer: zipfile.ZipFile, dest: Path) -> None:
+    """How the app displays each parameter (units, ranges, order) -> sliders.json. Optional."""
+    import json
+    from .sliders import extract
+    so = _find_member(outer, SLIDER_LIBS)
+    if not so:
+        return
+    ids = {}
+    for f in (dest / "models").glob("*.models"):
+        for m in json.loads(f.read_text(encoding="utf-8")):
+            if "id" in m:
+                ids[m["id"]] = m["symbolicID"]
+    try:
+        (dest / "models" / "sliders.json").write_text(json.dumps(extract(so, ids)), encoding="utf-8")
+    except ValueError:
+        pass
 
 
 def import_apk(apk: "str | Path", dest: "Path | None" = None) -> int:
@@ -72,6 +110,7 @@ def import_apk(apk: "str | Path", dest: "Path | None" = None) -> int:
         for t in TABLES:
             if f"assets/{t}" in names:
                 (dest / t).write_bytes(z.read(f"assets/{t}"))
+        _import_sliders(outer, dest)
     return len(models)
 
 

@@ -18,7 +18,8 @@ class SimDevice:
         st = _s.SymbolTable(table); self.names, self.index = st.names, st.index
         self.chain = {'Gate': 'Gate', 'Wah': 'Weeper', 'VolumePedal': 'VolumePedal', 'FX1': 'HD_ColorDrive',
                       'FX2': 'AnalogChorus', 'Amp': 'HD_AmpBlackfaceDoubleVib', 'StudioCab': '2x12BlackfaceStudio57OnAxis',
-                      'FX3': 'DynamicDelay', 'FX4': 'RezSynth', 'FX5': 'HD_VerbzillaReverb63Spring', 'Looper': 'LooperFx500'}
+                      'FX3': 'DynamicDelay', 'FX4': 'RezSynth', 'FX5': 'HD_VerbzillaReverb63Spring', 'Looper': 'LooperFx500',
+                      'PostEQ': 'ParaGraphic4_band', 'PostComp': 'SharcPodFixedComp'}
         for k, v in list(self.chain.items()):
             if v not in self.index: self.chain[k] = next((n for n in self.names if n.startswith(v[:12])), v)
     def tuner_note(self, value: float):

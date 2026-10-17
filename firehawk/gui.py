@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional
 
 from . import __version__, icons
-from .catalog import LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, pretty, split_cab
+from .catalog import LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, frac, pretty, split_cab, value_at
 from .device import _EN, TUNER_NOTES, Firehawk, preset_label
 from .importer import DOWNLOAD_PAGE, data_dir, download_and_import, has_line6_data, import_apk
 
@@ -448,10 +448,7 @@ class App(tk.Tk):
                 c.create_text(w - 45, y + h // 2, text="ON" if on else "OFF", fill=BG if on else SUB,
                               font=(FONT, 10, "bold"))
             else:
-                frac = 0.0
-                if v is not None and p.vmax != p.vmin:
-                    frac = min(1.0, max(0.0, (float(v) - p.vmin) / (p.vmax - p.vmin)))
-                fx = int(w * frac)
+                fx = int(w * frac(p, v))
                 c.create_rectangle(0, y, fx, y + h, fill=look.track, outline="")
                 c.create_rectangle(max(0, fx - 4), y, fx, y + h, fill=look.color, outline="")
                 c.create_text(w - 14, y + h // 2, text=fmt(p, v if v is not None else 0), fill=TEXT,
@@ -470,9 +467,7 @@ class App(tk.Tk):
 
     def _value_at(self, p: Param, x: int):
         w = max(self.rows.winfo_width(), 1)
-        frac = min(1.0, max(0.0, x / w))
-        v = p.vmin + frac * (p.vmax - p.vmin)
-        return int(round(v)) if p.vtype == 0 else round(v, 3)
+        return value_at(p, x / w)
 
     def _row_press(self, ev):
         p = self._hit(ev)
@@ -496,9 +491,14 @@ class App(tk.Tk):
         if not p or not self.sel or p.vtype == 2:
             return
         cur = self.sel.values.get(p.sid, p.default) or 0
-        step = 1 if p.vtype == 0 else (p.vmax - p.vmin) / 100
-        v = min(p.vmax, max(p.vmin, float(cur) + (step if ev.delta > 0 else -step)))
-        self._send(self.sel, p, int(v) if p.vtype == 0 else round(v, 3))
+        lay = p.layout
+        if lay is not None and lay.detents:                       # discrete: one notch
+            step = 1 / max(lay.ctl[1] - lay.ctl[0], 1)
+        elif lay is None and p.vtype == 0:
+            step = 1 / max(p.vmax - p.vmin, 1)
+        else:
+            step = 0.01
+        self._send(self.sel, p, value_at(p, frac(p, cur) + (step if ev.delta > 0 else -step)))
 
     def _send(self, b: Block, p: Param, v):
         b.values[p.sid] = v

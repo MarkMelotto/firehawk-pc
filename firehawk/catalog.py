@@ -67,6 +67,7 @@ class Param:
     vmax: float
     default: object
     note: str = ""       # "delay" / "mod": SyncSelect shown as a note value like the app
+    layout: object = None    # sliders.Layout: units / range / curve as in the app
 
 
 @dataclass
@@ -128,6 +129,9 @@ class Catalog:
         self.folder = folder
         self.models: Dict[str, Model] = {}
         self.raw: Dict[str, dict] = {}          # model json as shipped (all params, cablink, ...)
+        from . import sliders
+        sl = folder / "sliders.json"
+        self.layouts, self.panels = sliders.load(json.loads(sl.read_text(encoding="utf-8"))) if sl.exists() else ({}, {})
         for f in sorted(folder.glob("*.models")):
             for m in json.loads(f.read_text(encoding="utf-8")):
                 sid = m.get("symbolicID", "")
@@ -139,9 +143,11 @@ class Catalog:
                           for p in m.get("params", [])
                           if p.get("name") and p["symbolicID"] not in HIDDEN and "." not in p["symbolicID"]
                           and p.get("valueType", 1) != 3]
+                params = self._panel_params(sid, m, params)
                 for p in params:
                     if p.sid == "SyncSelect":
                         p.note = "mod" if fam == "mod" else "delay"
+                        p.layout = None
                 # newest definition wins (hd files sort after the classic ones)
                 self.raw[sid] = m
                 self.models[sid] = Model(sid, m.get("shortname") or m.get("name", sid), fam, params)
@@ -156,6 +162,25 @@ class Catalog:
             return []
         data = json.loads(f.read_text(encoding="utf-8"))
         return [(g, ids) for g, ids in data.items() if only is None or g in only]
+
+    def _panel_params(self, sid: str, m: dict, default: List[Param]) -> List[Param]:
+        """The app's slider panel for this model: its order, units and ranges (sliders.json)."""
+        from .sliders import L_SKIP, PERCENT
+        raw = {p["symbolicID"]: p for p in m.get("params", [])}
+        views = self.panels.get(sid)
+        if not views:
+            for p in default:
+                if p.vtype == 1 and p.vmin == 0 and p.vmax == 1:
+                    p.layout = PERCENT
+            return default
+        out = []
+        for psid, lid in views:
+            if lid in L_SKIP or psid in HIDDEN or psid not in raw:
+                continue
+            r = raw[psid]
+            out.append(Param(psid, r.get("name", psid), r.get("valueType", 1), r.get("min", 0), r.get("max", 1),
+                             r.get("default"), layout=self.layouts.get(lid)))
+        return out or default
 
     def device_params(self, sid: str) -> List[tuple]:
         """[(param symbol, valueType, default)] stored in a preset for this model (no '@' / sub-params)."""
@@ -188,19 +213,40 @@ def pretty(sid: str) -> str:
 
 
 def fallback_params(group: str) -> List[Param]:
-    return [Param(sid, name, 1, 0.0, 1.0, 0.5) for sid, name in FALLBACK.get(group, [])]
+    from .sliders import PERCENT
+    return [Param(sid, name, 1, 0.0, 1.0, 0.5, layout=PERCENT) for sid, name in FALLBACK.get(group, [])]
 
 
 def fmt(p: Param, v) -> str:
-    """Display like the app: 0..1 knobs as 0-10, ints as-is, bools On/Off."""
+    """Display like the app: %, dB, Hz, ms ... from the app's slider layouts; notes; On/Off."""
     if p.sid == "@mic":
         return MIC_NAMES[int(v)] if 0 <= int(v) < len(MIC_NAMES) else str(v)
     if p.note:
         return note_name(p.note, v)
     if p.vtype == 2:
         return "On" if v else "Off"
+    if p.layout is not None:
+        return p.layout.text(v)
     if p.vtype == 0:
         return str(int(v))
     if p.vmin == 0 and p.vmax == 1:
-        return f"{float(v) * 10:.1f}"
+        from .sliders import PERCENT
+        return PERCENT.text(v)
     return f"{float(v):.1f}"
+
+
+def frac(p: Param, v) -> float:
+    """Slider position 0..1 for a device value (the app's control scale, e.g. EQ frequency curves)."""
+    if v is None:
+        return 0.0
+    if p.layout is not None:
+        return p.layout.frac(v)
+    return 0.0 if p.vmax == p.vmin else min(1.0, max(0.0, (float(v) - p.vmin) / (p.vmax - p.vmin)))
+
+
+def value_at(p: Param, f: float):
+    """Device value for a slider position 0..1."""
+    if p.layout is not None:
+        return p.layout.value_at(f)
+    v = p.vmin + min(1.0, max(0.0, f)) * (p.vmax - p.vmin)
+    return int(round(v)) if p.vtype == 0 else round(v, 3)

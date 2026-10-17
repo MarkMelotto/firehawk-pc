@@ -13,6 +13,10 @@
 - HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
   header and the model picker.
 - Delay **Note** values were shown in reverse; they now run from a whole note down to 1/32, like on the amp.
+- Settings are shown like in the phone app: knobs in %, EQ frequencies in Hz/kHz with the app's frequency
+  curves, EQ gain in dB, gate and compressor thresholds in dB, delay time in ms, modulation speed in Hz, and
+  every effect's controls in the app's order (the EQ now shows all four gains). Taken from the official app
+  during **GET ALL EFFECTS…** — click it once more after updating.
 - After every preset change the app reads the amp's new tone, like the phone app does (the amp could stop
   responding to the floorboard while connected).
 - The previous run's log is kept as `firehawk-debug.previous.log`.
