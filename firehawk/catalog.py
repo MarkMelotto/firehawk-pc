@@ -101,7 +101,7 @@ PICKERS = {"amp": ("AmpCatalog.json", ["Clean", "American", "British", "High Gai
            "wah": ("WahCatalog.json", None), "cab": ("CabCatalog.json", None)}
 
 
-# SliderRow.note[]: kParamImageListType_Note_Delay uses it as-is, Note_Mod reversed
+# SliderRow.note[] order; SyncSelect 1 = whole note down to 14 = 1/32 for delay and mod alike
 NOTES = ["1/32", "1/16 T", "1/16", "1/16 \u00b7", "1/8 T", "1/8", "1/8 \u00b7", "1/4 T", "1/4", "1/4 \u00b7",
          "1/2 T", "1/2", "1/2 \u00b7", "Whole"]
 
@@ -110,7 +110,7 @@ def note_name(kind: str, v) -> str:
     i = int(round(float(v))) - 1                     # SyncSelect is 1..14
     if not 0 <= i < len(NOTES):
         return str(v)
-    return NOTES[len(NOTES) - 1 - i] if kind == "mod" else NOTES[i]
+    return NOTES[len(NOTES) - 1 - i]                 # 1 = whole note ... 14 = 1/32 (delay and mod, checked on the amp)
 
 
 def split_cab(sid: str):
