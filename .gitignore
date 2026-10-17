@@ -13,3 +13,6 @@ firehawk.ico
 re/
 *.apk
 *.so
+
+# python packaging
+*.egg-info/

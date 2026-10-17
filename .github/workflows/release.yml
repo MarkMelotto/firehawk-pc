@@ -1,6 +1,6 @@
 # Bump __version__ in firehawk/__init__.py, add a CHANGELOG.md section, push to main:
 # this tests, builds the Windows .exe files and publishes Release vX.Y.Z (tag created automatically).
-# Pushes that don't change the version only run the tests.
+# A new version is also published to PyPI. Pushes that don't change the version only run the tests.
 name: release
 
 on:
@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      new: ${{ steps.v.outputs.new }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,3 +77,23 @@ jobs:
         with:
           name: FirehawkRemote
           path: dist/*.exe
+
+  # Same version also goes to PyPI (pip install firehawk-remote). Uses PyPI "trusted publishing":
+  # no token needed, link this repo/workflow once at https://pypi.org/manage/account/publishing/
+  pypi:
+    needs: build
+    if: needs.build.outputs.new == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build package
+        run: |
+          pip install build
+          python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1

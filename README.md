@@ -67,6 +67,14 @@ included in this project.
 
 ---
 
+## Install with pip (any OS with Python 3.10+)
+
+```
+pip install firehawk-remote
+firehawk-remote                        # the app
+firehawk-cli --port COM4 presets       # the command line tool
+```
+
 ## Command line
 
 `firehawk-cli.exe` (also on the Releases page) is for scripting:
@@ -102,7 +110,7 @@ How the Bluetooth protocol works is documented in [PROTOCOL.md](PROTOCOL.md).
 
 1. Bump `__version__` in `firehawk/__init__.py` and add a `## 1.3.1` section to `CHANGELOG.md`.
 2. Commit and push to `main`.
-3. GitHub Actions runs the tests, builds both `.exe` files, creates tag `v1.3.1` and publishes the release
+3. GitHub Actions runs the tests, builds both `.exe` files, publishes the package to PyPI, creates tag `v1.3.1` and publishes the release
    with that changelog section as notes (see the *Actions* tab). Pushes without a version bump only run the tests.
 
 ## Credits

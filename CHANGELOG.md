@@ -16,6 +16,7 @@
   ms (or speed in Hz).
 - **HD** badge on HD models in the signal chain, the editor and the model picker.
 - Hardware tones grouped by bank like on the amp: **Bank 1** A–D … **Bank 32**; presets are labelled 1A–32D.
+- On PyPI: `pip install firehawk-remote`, then run `firehawk-remote` (app) or `firehawk-cli`.
 - Command line: `firehawk-cli.exe save 3C --name "My Tone"` and `firehawk-cli.exe dump 3C`.
 
 ### Improved

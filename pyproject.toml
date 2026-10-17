@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "firehawk-remote"
+dynamic = ["version"]
+description = "Unofficial PC remote for the Line 6 Firehawk 1500 / Firehawk FX over Bluetooth"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mark Melotto" }]
+requires-python = ">=3.10"
+dependencies = ["pyserial>=3.5", "pillow>=10"]
+keywords = ["line6", "firehawk", "guitar", "bluetooth", "remote"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Environment :: Win32 (MS Windows)",
+]
+
+[project.urls]
+Homepage = "https://github.com/MarkMelotto/firehawk-pc"
+Changelog = "https://github.com/MarkMelotto/firehawk-pc/blob/main/CHANGELOG.md"
+
+[project.scripts]
+firehawk-cli = "firehawk.cli:main"
+
+[project.gui-scripts]
+firehawk-remote = "firehawk.gui:main"
+
+[tool.setuptools]
+packages = ["firehawk"]
+
+[tool.setuptools.dynamic]
+version = { attr = "firehawk.__version__" }
