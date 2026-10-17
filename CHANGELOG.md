@@ -13,6 +13,8 @@
 - HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
   header and the model picker.
 - Delay **Note** values were shown in reverse; they now run from a whole note down to 1/32, like on the amp.
+- After every preset change the app reads the amp's new tone, like the phone app does (the amp could stop
+  responding to the floorboard while connected).
 - The previous run's log is kept as `firehawk-debug.previous.log`.
 - Sending large messages now respects the amp's 512-byte receive window.
 - No more hanging when the amp is off or out of range: connecting gives up after a few seconds with a clear

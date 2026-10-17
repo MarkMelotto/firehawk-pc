@@ -100,6 +100,7 @@ class Firehawk:
         self.tuner_engaged = False
         self.current_preset: Optional[int] = None          # 0-based, from preset events / select_preset
         self._patch_events = 0
+        self.edit_buffer: Optional[bytes] = None
         self._tuner_events = False
         self._tuner_lock = threading.Lock()
 
@@ -153,6 +154,9 @@ class Firehawk:
         if ev.kind == 3 and len(ev.body) >= 8:                      # {int preset, int ?} typed values
             self.current_preset = struct.unpack_from("<i", ev.body, 4)[0]
             self._patch_events += 1
+            # the original app reads the new edit buffer after every preset change
+            # (A36EditBufferContext::syncWithDeviceAsMaster -> GetPresetFile(0xFFFFFFFF)); do the same
+            threading.Thread(target=self._fetch_edit_buffer, daemon=True, name="sync-edit-buffer").start()
             if self.on_patch:
                 self.on_patch(self.current_preset)
         if self.on_event:
@@ -170,6 +174,13 @@ class Firehawk:
     def set_model(self, group: str, model_sid: str) -> int:
         """Swap the model in a block (editor cmd 8 LoadDspModel); cab ids include the mic suffix."""
         return self.editor.load_model(GROUP_SLOT[group], model_sid)
+
+    def _fetch_edit_buffer(self) -> None:
+        try:
+            self.edit_buffer = self.librarian.get_preset_file(self.librarian.EDIT_BUFFER)
+            log.info("edit buffer synced (%d bytes) after preset change", len(self.edit_buffer))
+        except Exception as e:  # noqa: BLE001 - informational
+            log.warning("edit buffer sync failed: %s", e)
 
     def tuner(self, on: bool) -> int:
         """Engage/disengage the amp's tuner (engageTunerInternal: set Tuner/Enable, then (un)register Note events)."""
