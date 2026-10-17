@@ -210,13 +210,14 @@ class Firehawk:
         say = progress or (lambda m: None)
         switches = self._patch_events
         say("Reading the current tone from the amp…")
+        # Only ever upload what the amp serialised itself: a preset rebuilt from editor values (the old
+        # _patched_copy) was accepted but made a Firehawk 1500 hang when that preset was loaded.
         try:
             data = self.librarian.get_preset_file(self.librarian.EDIT_BUFFER)
             entries = pf.parse(data)
-            how = "edit buffer"
-        except (RuntimeError, ValueError) as e:            # firmware without edit-buffer read: patch a stored copy
-            log.warning("edit buffer read failed (%s); patching the stored preset instead", e)
-            entries, how = self._patched_copy(target, catalog, say), "patched copy"
+        except (RuntimeError, ValueError) as e:
+            raise RuntimeError(f"The amp didn't hand over the current tone ({e}); nothing was saved.") from e
+        how = "edit buffer"
         if pf.serialize(entries) != pf.serialize(pf.parse(pf.serialize(entries))):
             raise RuntimeError("Unknown preset format on this amp; nothing was saved.")
         if self._patch_events != switches:

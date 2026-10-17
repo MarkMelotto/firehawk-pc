@@ -5,7 +5,8 @@
 - **SAVE** (or Ctrl+S): store the current tone on the amp, in the same preset or another one, with a new name.
   The preset that gets overwritten is backed up first (`%LOCALAPPDATA%\FirehawkRemote\backups`).
   The dialog starts at the current preset with its name filled in. The amp itself provides the tone that is
-  saved; saving stops without writing if the amp switches preset meanwhile, and quitting during a save asks first.
+  saved (never a preset rebuilt by this app, which an earlier test build did and which made the amp hang
+  when loading it); saving stops without writing if the amp switches preset meanwhile, and quitting during a save asks first.
 - Hardware tones are grouped like on the amp and the phone app: **Bank 1** with A–D, up to **Bank 32**; presets
   are labelled 1A … 32D in the app and the command line.
 - `firehawk-cli.exe save 3C --name "My Tone"`; `firehawk-cli.exe dump 3C` shows a stored preset.

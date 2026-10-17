@@ -118,25 +118,13 @@ try:
 except RuntimeError as e:
     assert 'switched' in str(e) and 1 not in dev.preset_files
 fh.librarian.get_preset_file = orig_get
-del dev.preset_files[0xFFFFFFFF]            # older firmware: fall back to patching the stored preset
-assert pf.serialize(pf.parse(dev.preset_files[0])) == dev.preset_files[0]
-class Cat:
-    device_params = staticmethod(lambda m: [('Speed', 1, 0.5), ('@enabled', 2, True)] if m == 'RezSynth' else [])
-    cab_link = staticmethod(lambda c: '')
-tmpd = Path(tempfile.mkdtemp()); imp.data_dir = lambda: tmpd
-fh.current_preset = 0
-steps = []
-changes = fh.save_preset(2, 'My Tone', Cat(), steps.append)
-saved = pf.parse(dev.preset_files[2])
-assert pf.preset_name(saved) == 'My Tone', pf.preset_name(saved)
-vals = {fh.editor.symbols.name(e.key): e.value for e in saved if e.key < 0x80000000}
-assert abs(vals['DriveState'] - 0.75) < 1e-6 and vals['FX1EnableState'] is True, vals
-assert 'SpeedState' in vals and 'DepthState' not in vals                     # FX2 rebuilt for RezSynth
-models = [fh.editor.symbols.name(e.u32) for e in saved if e.key == pf.ASSET]
-assert models == ['GuitarProc', 'HD_AmpBlackfaceDoubleVib', 'RezSynth'], models
-assert pf.serialize(pf.parse(dev.preset_files[0])) == tone('Clean')         # source untouched
-assert list((tmpd / 'backups').iterdir()), 'no backup of the overwritten preset'
-assert any(e.key == 0x19 and len(e.raw) == 804 for e in saved)
+del dev.preset_files[0xFFFFFFFF]            # no edit buffer from the amp: refuse, never rebuild a preset
+try:
+    fh.save_preset(2, 'My Tone', None); raise AssertionError('saved without the edit buffer')
+except RuntimeError as e:
+    assert 'nothing was saved' in str(e)
+assert pf.preset_name(pf.parse(dev.preset_files[2])) == 'Lead'
+changes = 'edit buffer path only'
 print('save preset OK:', changes)
 time.sleep(1.3)
 assert any(k[0] == 'keep' for k in dev.log), 'no keepalive sent'
