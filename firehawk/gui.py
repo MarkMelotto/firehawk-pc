@@ -112,6 +112,25 @@ class TunerWindow(tk.Toplevel):
             c.create_rectangle(12 + i * step + 3, y0, 12 + (i + 1) * step - 3, y1, fill=col, width=0)
 
 
+def row_of(idx: int) -> int:
+    """Preset index -> row in a bank-grouped list (a 'BANK n' header before every 4 presets)."""
+    return idx // 4 * 5 + 1 + idx % 4
+
+
+def idx_of(row: int) -> Optional[int]:
+    return None if row % 5 == 0 else row // 5 * 4 + row % 5 - 1
+
+
+def fill_banks(lst: tk.Listbox, names: List[str]) -> None:
+    """Like the app's hardware tones list: BANK 1 / A B C D, BANK 2 / ..."""
+    lst.delete(0, "end")
+    for i, n in enumerate(names):
+        if i % 4 == 0:
+            lst.insert("end", f" BANK {i // 4 + 1}")
+            lst.itemconfig("end", fg="#7f8fb0", selectbackground=lst.cget("bg"), selectforeground="#7f8fb0")
+        lst.insert("end", f"   {'ABCD'[i % 4]}    {n}")
+
+
 def _com_ports():
     try:
         from serial.tools import list_ports
@@ -749,25 +768,25 @@ class App(tk.Tk):
 
     def _fill_presets(self, names):
         self.preset_names = names
-        self.lst.delete(0, "end")
-        for i, n in enumerate(names, 1):
-            self.lst.insert("end", f"  {preset_label(i - 1):>4}   {n}")
+        fill_banks(self.lst, names)
         if 0 <= self.current_preset < len(names):
             self._mark_preset(self.current_preset)
 
     def _mark_preset(self, idx):
         self.current_preset = idx
         self.lst.selection_clear(0, "end")
-        if idx < self.lst.size():
-            self.lst.selection_set(idx)
-            self.lst.see(idx)
+        if row_of(idx) < self.lst.size():
+            self.lst.selection_set(row_of(idx))
+            self.lst.see(row_of(idx))
         name = self.preset_names[idx] if idx < len(self.preset_names) else ""
         self.lbl_preset.config(text=f"{preset_label(idx)}   {name}")
 
     def _preset_clicked(self, _e=None):
         if not self.fh or not self.lst.curselection():
             return
-        idx = self.lst.curselection()[0]
+        idx = idx_of(self.lst.curselection()[0])
+        if idx is None:                                 # bank header
+            return
         self._mark_preset(idx)
         self.worker.submit(self._select_preset, idx)
 
@@ -844,7 +863,7 @@ class App(tk.Tk):
         if 0 <= self.current_preset < len(self.preset_names):
             cur = self.current_preset
         else:                                           # amp doesn't report its preset until one is switched
-            cur = self.lst.curselection()[0] if self.lst.curselection() else 0
+            cur = (idx_of(self.lst.curselection()[0]) if self.lst.curselection() else None) or 0
         win = tk.Toplevel(self)
         win.title("Save tone")
         win.configure(bg=PANEL)
@@ -862,10 +881,9 @@ class App(tk.Tk):
         lst = tk.Listbox(win, bg="#1a1a1a", fg="#e6e6e6", selectbackground=HEADER, selectforeground=TEXT,
                          highlightthickness=0, bd=0, activestyle="none", font=(FONT, 11), exportselection=False)
         lst.pack(fill="both", expand=True, padx=18, pady=(2, 10))
-        for i, n in enumerate(self.preset_names, 1):
-            lst.insert("end", f"  {preset_label(i - 1):>4}   {n}")
-        lst.selection_set(cur)
-        lst.see(cur)
+        fill_banks(lst, self.preset_names)
+        lst.selection_set(row_of(cur))
+        lst.see(row_of(cur))
         status = tk.Label(win, text="", fg="#ffd27a", bg=PANEL, font=(FONT, 9), anchor="w", wraplength=380,
                           justify="left")
         status.pack(fill="x", padx=18)
@@ -874,7 +892,10 @@ class App(tk.Tk):
             sel = lst.curselection()
             if not sel:
                 return
-            idx, new = sel[0], name.get().strip()[:63]
+            idx, new = idx_of(sel[0]), name.get().strip()[:63]
+            if idx is None:
+                status.config(text="Pick a preset (A–D), not the bank header.")
+                return
             if not new:
                 status.config(text="Give the tone a name.")
                 return
