@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 
 from . import __version__, icons
 from .catalog import LOOKS, MICS, Catalog, Model, Param, fallback_params, fmt, pretty, split_cab
-from .device import _EN, TUNER_NOTES, Firehawk
+from .device import _EN, TUNER_NOTES, Firehawk, preset_label
 from .importer import DOWNLOAD_PAGE, data_dir, download_and_import, has_line6_data, import_apk
 
 log = logging.getLogger("firehawk.gui")
@@ -751,7 +751,7 @@ class App(tk.Tk):
         self.preset_names = names
         self.lst.delete(0, "end")
         for i, n in enumerate(names, 1):
-            self.lst.insert("end", f"  {i:>3}   {n}")
+            self.lst.insert("end", f"  {preset_label(i - 1):>4}   {n}")
         if 0 <= self.current_preset < len(names):
             self._mark_preset(self.current_preset)
 
@@ -762,7 +762,7 @@ class App(tk.Tk):
             self.lst.selection_set(idx)
             self.lst.see(idx)
         name = self.preset_names[idx] if idx < len(self.preset_names) else ""
-        self.lbl_preset.config(text=f"{idx + 1:03d}   {name}")
+        self.lbl_preset.config(text=f"{preset_label(idx)}   {name}")
 
     def _preset_clicked(self, _e=None):
         if not self.fh or not self.lst.curselection():
@@ -841,7 +841,10 @@ class App(tk.Tk):
         """Store the current tone on the amp: pick the preset number and name (like the app's Save screen)."""
         if not self.fh or not self.preset_names:
             return
-        cur = self.current_preset if 0 <= self.current_preset < len(self.preset_names) else 0
+        if 0 <= self.current_preset < len(self.preset_names):
+            cur = self.current_preset
+        else:                                           # amp doesn't report its preset until one is switched
+            cur = self.lst.curselection()[0] if self.lst.curselection() else 0
         win = tk.Toplevel(self)
         win.title("Save tone")
         win.configure(bg=PANEL)
@@ -860,7 +863,7 @@ class App(tk.Tk):
                          highlightthickness=0, bd=0, activestyle="none", font=(FONT, 11), exportselection=False)
         lst.pack(fill="both", expand=True, padx=18, pady=(2, 10))
         for i, n in enumerate(self.preset_names, 1):
-            lst.insert("end", f"  {i:>3}   {n}")
+            lst.insert("end", f"  {preset_label(i - 1):>4}   {n}")
         lst.selection_set(cur)
         lst.see(cur)
         status = tk.Label(win, text="", fg="#ffd27a", bg=PANEL, font=(FONT, 9), anchor="w", wraplength=380,
@@ -876,7 +879,7 @@ class App(tk.Tk):
                 status.config(text="Give the tone a name.")
                 return
             if idx != cur and not messagebox.askyesno(
-                    "Save tone", f"Overwrite preset {idx + 1} \"{self.preset_names[idx].strip()}\"?", parent=win):
+                    "Save tone", f"Overwrite preset {preset_label(idx)} \"{self.preset_names[idx].strip()}\"?", parent=win):
                 return
             btn.config(state="disabled")
             self.worker.submit(self._save, idx, new, win, status, btn)
@@ -909,7 +912,7 @@ class App(tk.Tk):
         if idx != self.current_preset:
             self.worker.submit(self._select_preset, idx)       # continue on the preset just written
         self._mark_preset(idx)
-        self.lbl_status.config(text=f"Saved to preset {idx + 1}")
+        self.lbl_status.config(text=f"Saved to preset {preset_label(idx)}")
 
     # ------------------------------------------------------------------ tuner
     def tuner_on(self):

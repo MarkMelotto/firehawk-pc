@@ -70,11 +70,11 @@ included in this project.
 
 ```
 firehawk-cli.exe --port COM4 presets              # list preset names
-firehawk-cli.exe --port COM4 select 12            # load preset 12
+firehawk-cli.exe --port COM4 select 3C            # load preset 3C (bank 3, letter C)
 firehawk-cli.exe --port COM4 set amp Drive 0.7    # knobs are 0..1
 firehawk-cli.exe --port COM4 set reverb @enabled off
 firehawk-cli.exe --port COM4 watch                # print changes made on the amp
-firehawk-cli.exe --port COM4 save 12 --name "My Tone"   # store the current tone in preset 12
+firehawk-cli.exe --port COM4 save 3C --name "My Tone"   # store the current tone in preset 3C
 firehawk-cli.exe --port COM4 tuner                # amp tuner: note and cents
 ```
 

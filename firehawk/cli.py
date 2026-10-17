@@ -1,13 +1,13 @@
 """firehawk-pc command line.
 
   python -m firehawk.cli --port COM5 presets             # list preset names
-  python -m firehawk.cli --port COM5 select 12           # switch to preset 12
+  python -m firehawk.cli --port COM5 select 3C           # switch to preset 3C (or its number, 11)
   python -m firehawk.cli --port COM5 set amp Drive 0.7   # 0..1 for knobs
   python -m firehawk.cli --port COM5 set fx1 @enabled off
   python -m firehawk.cli --port COM5 get amp Drive
   python -m firehawk.cli --port COM5 watch               # print knob/preset events from the unit
-  python -m firehawk.cli --port COM5 save 12 --name "My Tone"   # store the current tone in preset 12
-  python -m firehawk.cli --port COM5 dump 12             # print (and save) stored preset 12, for debugging
+  python -m firehawk.cli --port COM5 save 3C --name "My Tone"   # store the current tone in preset 3C
+  python -m firehawk.cli --port COM5 dump 3C             # print (and save) stored preset 3C, for debugging
   python -m firehawk.cli --port COM5 tuner               # engage the amp's tuner and print note/cents
   add -v to log every frame (protocol debugging)
 """
@@ -18,7 +18,7 @@ import logging
 import sys
 import time
 
-from .device import TUNER_NOTES, Firehawk
+from .device import TUNER_NOTES, Firehawk, parse_preset, preset_label
 
 
 def parse_value(s: str):
@@ -38,10 +38,10 @@ def main(argv=None) -> int:
     sub.add_parser("presets")
     sub.add_parser("watch")
     sub.add_parser("tuner")
-    sv = sub.add_parser("save"); sv.add_argument("number", type=int); sv.add_argument("--name")
-    sv.add_argument("--from", dest="source", type=int, help="preset the current tone was loaded from")
-    dp = sub.add_parser("dump"); dp.add_argument("number", type=int)
-    s = sub.add_parser("select"); s.add_argument("number", type=int)
+    sv = sub.add_parser("save"); sv.add_argument("number", type=parse_preset, help="e.g. 12C"); sv.add_argument("--name")
+    sv.add_argument("--from", dest="source", type=parse_preset, help="preset the current tone was loaded from")
+    dp = sub.add_parser("dump"); dp.add_argument("number", type=parse_preset, help="e.g. 12C")
+    s = sub.add_parser("select"); s.add_argument("number", type=parse_preset, help="e.g. 12C")
     g = sub.add_parser("get"); g.add_argument("group"); g.add_argument("param")
     st = sub.add_parser("set"); st.add_argument("group"); st.add_argument("param"); st.add_argument("value")
     args = ap.parse_args(argv)
@@ -58,10 +58,10 @@ def main(argv=None) -> int:
     try:
         fh.connect(editor=args.cmd in ("get", "set", "watch", "tuner", "save", "dump"))
         if args.cmd == "presets":
-            for i, n in enumerate(fh.preset_names(), 1):
-                print(f"{i:3d}  {n}")
+            for i, n in enumerate(fh.preset_names()):
+                print(f"{preset_label(i):>4}  {n}")
         elif args.cmd == "select":
-            print("ok" if fh.select_preset(args.number) >= 0 else "device refused")
+            print("ok" if fh.select_preset(args.number + 1) >= 0 else "device refused")
         elif args.cmd == "get":
             print(fh.get(args.group, args.param))
         elif args.cmd == "set":
@@ -74,15 +74,15 @@ def main(argv=None) -> int:
                 time.sleep(1)
         elif args.cmd == "save":
             from .catalog import Catalog
-            if args.source:
-                fh.current_preset = args.source - 1
-            for c in fh.save_preset(args.number - 1, args.name, Catalog(), print) or ["(no changes)"]:
+            if args.source is not None:
+                fh.current_preset = args.source
+            for c in fh.save_preset(args.number, args.name, Catalog(), print) or ["(no changes)"]:
                 print("  " + c)
             print("saved")
         elif args.cmd == "dump":
             from . import preset as pf
-            raw = fh.librarian.get_preset_file(args.number - 1)
-            out = f"preset-{args.number:03d}.bin"
+            raw = fh.librarian.get_preset_file(args.number)
+            out = f"preset-{preset_label(args.number)}.bin"
             open(out, "wb").write(raw)
             name = fh.editor.symbols.name
             depth = 0

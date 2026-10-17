@@ -37,6 +37,19 @@ from .importer import TABLES, data_dir
 CACHED_TABLES = [data_dir() / n for n in TABLES]
 
 
+def preset_label(idx: int) -> str:
+    """0-based index -> bank + letter as on the amp: 0 -> '1A', 3 -> '1D', 127 -> '32D'."""
+    return f"{idx // 4 + 1}{'ABCD'[idx % 4]}"
+
+
+def parse_preset(text: str) -> int:
+    """'12C' (bank + letter) or '46' (1-based number) -> 0-based index."""
+    t = text.strip().upper()
+    if t and t[-1] in "ABCD" and t[:-1].isdigit():
+        return (int(t[:-1]) - 1) * 4 + "ABCD".index(t[-1])
+    return int(t) - 1
+
+
 ANSWER_S = 6.0          # the amp answers the IAP sync within a second when it's there
 
 # TunerFragment.TUNER_NOTE (note 0 = A)
