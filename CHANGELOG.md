@@ -7,7 +7,8 @@
   starts at the current preset. The preset that gets overwritten is backed up first
   (`%LOCALAPPDATA%\FirehawkRemote\backups`).
 - **Footswitch panel** at the bottom: click FS1–FS5 to choose which block that FBV switch turns on and off.
-  Blocks on a footswitch show "FS2" (etc.) on their tile. Save the tone to keep the assignment.
+  Its light shows whether the block is on; click the light to switch the block on or off. Blocks on a
+  footswitch show "FS2" (etc.) on their tile. Save the tone to keep the assignment.
 - **Type exact values**: click the value on the right of a slider (e.g. "545 ms") or right-click the slider,
   then type e.g. `375`, `1.2k` or `-6` (Enter applies, Esc cancels). Dragging from the value still slides.
   Note values and other step sliders stay sliders.

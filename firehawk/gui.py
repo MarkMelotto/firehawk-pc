@@ -445,7 +445,10 @@ class App(tk.Tk):
             tag = f"fs{i}"
             c.create_rectangle(x0, 2, x0 + bw, 58, fill="#1a1a1a", outline=col if self.fh else "#333333", width=2,
                                tags=tag)
-            c.create_oval(x0 + 12, 22, x0 + 26, 36, fill=col if on else "#2a2a2a", outline=col, tags=tag)
+            led = f"led{i}"                                  # the light: click it to switch the block on/off
+            c.create_oval(x0 + 9, 19, x0 + 29, 39, fill=col if on else "#2a2a2a", outline=col, width=2, tags=led)
+            if b:
+                c.tag_bind(led, "<Button-1>", lambda e, blk=b: self.toggle(blk))
             c.create_text(x0 + 36, 18, text=f"FS{i + 1}", anchor="w", fill=SUB, font=(FONT, 8, "bold"), tags=tag)
             name = b.title if b else "— nothing —"
             if len(name) > 18:
