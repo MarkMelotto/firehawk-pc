@@ -114,7 +114,7 @@ class TunerWindow(tk.Toplevel):
             c.create_rectangle(12 + i * step + 3, y0, 12 + (i + 1) * step - 3, y1, fill=col, width=0)
 
 
-TEST_BUILD = " (test build j)"     # shown in the title while testing; empty for releases
+TEST_BUILD = ""     # shown in the title while testing; empty for releases
 VALUE_W = 120         # right-hand part of a slider row: click it to type a value
 
 
@@ -337,13 +337,12 @@ class App(tk.Tk):
         self.lbl_change.bind("<Button-1>", lambda e: self.open_picker())
         self.btn_power = tk.Canvas(ed, width=40, height=40, bg=BG, highlightthickness=0, cursor="hand2")
         self.btn_power.pack(side="right")
-        # footswitch assignment of the selected block (FS1..FS5 on the FBV), like the app's footswitch view
-        self.fs_var = tk.StringVar(value="")
-        self.cb_fs = ttk.Combobox(ed, textvariable=self.fs_var, state="readonly", width=14, style="Dark.TCombobox",
-                                  values=["No footswitch"] + [f"Footswitch {i + 1}" for i in range(FOOTSWITCHES)])
-        self.cb_fs.bind("<<ComboboxSelected>>", lambda e: self._fs_chosen())
-        self.lbl_fs = tk.Label(ed, text="FOOTSWITCH", fg=SUB, bg=BG, font=(FONT, 8, "bold"))
-        self.btn_power.bind("<Button-1>", lambda e: self.toggle_selected())
+        # footswitch panel at the bottom, like the app's footswitch view
+        self.fsbar = tk.Canvas(main, bg=BG, height=60, highlightthickness=0)
+        self.fsbar.pack(side="bottom", fill="x", padx=18, pady=(0, 12))
+        self.fsbar.bind("<Configure>", lambda e: self._draw_footswitches())
+        tk.Label(main, text="FOOTSWITCHES", fg=SUB, bg=BG, font=(FONT, 8, "bold"), anchor="w").pack(
+            side="bottom", fill="x", padx=18)
 
         # slider rows
         rows_wrap = tk.Frame(main, bg=BG)
@@ -429,31 +428,68 @@ class App(tk.Tk):
         self.btn_power.delete("all")
         if b.group != "amp":
             icons.power(self.btn_power, 20, 21, 14, b.enabled)
-        if self.fh and b.group in _EN and b.present and b.model_sid:
-            cur = next((i for i, g in enumerate(self.fs) if g == b.group), None)
-            self.fs_var.set("No footswitch" if cur is None else f"Footswitch {cur + 1}")
-            self.cb_fs.pack(side="right", padx=(0, 12))
-            self.lbl_fs.pack(side="right", padx=(0, 6))
-        else:
-            self.cb_fs.pack_forget()
-            self.lbl_fs.pack_forget()
 
-    def _fs_chosen(self):
-        b = self.sel
-        if not b or not self.fh:
+    # ------------------------------------------------------------ footswitch panel (FBV FS1..FS5)
+    def _draw_footswitches(self):
+        c = self.fsbar
+        c.delete("all")
+        w = max(c.winfo_width(), 400)
+        n, gap = FOOTSWITCHES, 10
+        bw = (w - gap * (n - 1)) / n
+        blocks = {b.group: b for b in self.blocks}
+        for i in range(n):
+            x0 = i * (bw + gap)
+            b = blocks.get(self.fs[i]) if self.fs[i] else None
+            col = b.look.color if b else "#555555"
+            on = bool(b and b.enabled)
+            tag = f"fs{i}"
+            c.create_rectangle(x0, 2, x0 + bw, 58, fill="#1a1a1a", outline=col if self.fh else "#333333", width=2,
+                               tags=tag)
+            c.create_oval(x0 + 12, 22, x0 + 26, 36, fill=col if on else "#2a2a2a", outline=col, tags=tag)
+            c.create_text(x0 + 36, 18, text=f"FS{i + 1}", anchor="w", fill=SUB, font=(FONT, 8, "bold"), tags=tag)
+            name = b.title if b else "— nothing —"
+            if len(name) > 18:
+                name = name[:17] + "…"
+            c.create_text(x0 + 36, 38, text=name, anchor="w", fill=TEXT if b else "#777777",
+                          font=(FONT, 10, "bold" if b else "normal"), tags=tag)
+            c.tag_bind(tag, "<Button-1>", lambda e, k=i: self._fs_menu(k, e))
+        c.config(cursor="hand2" if self.fh else "")
+
+    def _fs_menu(self, fs: int, ev):
+        """Choose which block footswitch fs switches on/off (like tapping a footswitch in the app)."""
+        if not self.fh:
             return
-        choice = self.fs_var.get()
-        new = None if choice == "No footswitch" else int(choice.split()[-1]) - 1
-        old = next((i for i, g in enumerate(self.fs) if g == b.group), None)
-        if new == old:
+        m = tk.Menu(self, tearoff=0, bg=PANEL, fg=TEXT, activebackground=HILITE, activeforeground=TEXT)
+        m.add_command(label=f"FS{fs + 1}: nothing", command=lambda: self._fs_set(fs, None))
+        m.add_separator()
+        for b in self.blocks:
+            if b.group in _EN and b.present and b.model_sid:
+                mark = "● " if self.fs[fs] == b.group else "   "
+                m.add_command(label=f"{mark}{b.look.label}: {b.title}", command=lambda g=b.group: self._fs_set(fs, g))
+        m.tk_popup(ev.x_root, ev.y_root)
+
+    def _fs_set(self, fs: int, group: Optional[str]):
+        b = next((x for x in self.blocks if x.group == group), None)
+        old = next((i for i, g in enumerate(self.fs) if g == group), None) if group else None
+        if group is not None and old == fs:
             return
+        prev = self.fs[fs]
         if old is not None:
             self.fs[old] = None
-        if new is not None:
-            self.fs[new] = b.group                               # replaces whatever was on that switch
+        self.fs[fs] = group
+        self._draw_footswitches()
         self._draw_chain()
+        if group is None:
+            self.worker.submit(self._assign_fs_clear, fs, prev)
+            return
         raw = self.cat.raw.get(b.model_sid) or self.cat.raw.get(getattr(b.model, "sid", ""), {})
-        self.worker.submit(self._assign_fs, b, old, new, raw.get("category", 0))
+        self.worker.submit(self._assign_fs, b, old, fs, raw.get("category", 0))
+
+    def _assign_fs_clear(self, fs, _prev):
+        self.fh.assign_footswitch(fs, None)
+        self.fs = self.fh.footswitches()
+        self.after(0, self._draw_footswitches)
+        self.after(0, self._draw_chain)
 
     def _assign_fs(self, b, old, new, category):
         if old is not None:
@@ -464,7 +500,7 @@ class App(tk.Tk):
                 self.after(0, messagebox.showerror, "Footswitch", f"The amp refused the assignment (error {st}).")
         self.fs = self.fh.footswitches()
         self.after(0, self._draw_chain)
-        self.after(0, self._update_editor_header)
+        self.after(0, self._draw_footswitches)
 
     def _params(self) -> List[Param]:
         b = self.sel
@@ -531,27 +567,36 @@ class App(tk.Tk):
         w = max(self.rows.winfo_width(), 1)
         return value_at(p, x / w)
 
+    def _typable(self, p: Param) -> bool:
+        if p.vtype == 2 or p.sid in ("@mic", "@temposync") or p.note:
+            return False
+        return p.layout is None or p.layout.typable
+
+    def _in_value(self, ev) -> bool:
+        return ev.x > max(self.rows.winfo_width(), 300) - VALUE_W
+
     def _row_press(self, ev):
         p = self._hit(ev)
+        self._press = None
         if not p or not self.sel:
-            return
-        if p.vtype != 2 and p.sid != "@mic" and ev.x > max(self.rows.winfo_width(), 300) - VALUE_W:
-            self._type_value(p)                             # click the value to type an exact one
             return
         if p.vtype == 2:
             self._send(self.sel, p, not bool(self.sel.values.get(p.sid, p.default)))
+            return
+        if self._typable(p) and self._in_value(ev):
+            self._press = (p, ev.x)                         # a click here types, a drag still slides
             return
         self._drag = p
         self._send(self.sel, p, self._value_at(p, ev.x))
 
     def _row_type(self, ev):
         p = self._hit(ev)
-        if p and self.sel and p.vtype != 2 and p.sid != "@mic":
+        if p and self.sel and self._typable(p):
             self._type_value(p)
 
     def _row_hover(self, ev):
-        over = ev.x > max(self.rows.winfo_width(), 300) - VALUE_W and self._hit(ev) is not None
-        self.rows.config(cursor="xterm" if over else "")
+        p = self._hit(ev)
+        self.rows.config(cursor="xterm" if p and self._typable(p) and self._in_value(ev) else "")
 
     def _type_value(self, p: Param):
         """Edit the value in place: an entry over the value text; Enter applies, Esc cancels."""
@@ -588,11 +633,17 @@ class App(tk.Tk):
         ent.focus_set()
 
     def _row_drag(self, ev):
+        press = getattr(self, "_press", None)
+        if press and abs(ev.x - press[1]) > 4:              # started on the value but moved: slide
+            self._drag, self._press = press[0], None
         if self._drag and self.sel:
             self._send(self.sel, self._drag, self._value_at(self._drag, ev.x))
 
     def _row_release(self, _ev):
-        self._drag = None
+        press = getattr(self, "_press", None)
+        self._drag, self._press = None, None
+        if press and self.sel:
+            self._type_value(press[0])
 
     def _row_wheel(self, ev):
         p = self._hit(ev)
@@ -726,6 +777,7 @@ class App(tk.Tk):
             return                      # the amp block has no bypass on the unit
         b.enabled = not b.enabled
         self._draw_chain()
+        self._draw_footswitches()
         self._update_editor_header()
         if self.fh:
             self.worker.submit(self.fh.set, b.group, "@enabled", b.enabled)
@@ -884,6 +936,8 @@ class App(tk.Tk):
         self.btn_tuner.config(state="disabled")
         self.btn_save.config(state="disabled")
         self.lbl_preset.config(text="Not connected")
+        self.fs = [None] * FOOTSWITCHES
+        self._draw_footswitches()
 
     def _open(self, target):
         return Firehawk.open_port(target)
@@ -938,6 +992,7 @@ class App(tk.Tk):
         self.after(0, self._chain_loaded)
 
     def _chain_loaded(self):
+        self._draw_footswitches()
         if self.sel is None or not self.sel.present:
             self.sel = next((b for b in self.blocks if b.group == "amp"), None)
         self._draw_chain()
@@ -964,6 +1019,7 @@ class App(tk.Tk):
                 if b.group == ENABLE_TO_GROUP[param]:
                     b.enabled = bool(value)
                     self._draw_chain()
+                    self._draw_footswitches()
                     if b is self.sel:
                         self._update_editor_header()
             return

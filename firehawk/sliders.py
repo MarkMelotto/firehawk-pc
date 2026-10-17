@@ -19,7 +19,7 @@ L_SKIP = {2, 5, 52, L_HEADER}           # tempo-mode switches, tap tempo button,
 # ParamDisplayFormatType
 F_NONE, F_INT, F_PCT, F_DB, F_MS, F_HZMOD, F_SLOWFAST, F_EQGAIN, F_EQHZ, F_EQQ, F_HEADS, F_BITS, F_WAVE, \
     F_INT1, F_INT2, F_BPM = range(16)
-F_CONDITION, F_DBF, F_SPEAKER, F_WIDTH = 26, 30, 31, 32
+F_CONDITION, F_KEY, F_SHIFT, F_SCALE, F_DBF, F_SPEAKER, F_WIDTH = 26, 27, 28, 29, 30, 31, 32
 
 _DISCRETE = {
     F_HEADS: ["12--", "1-3-", "1--4", "-23-", "123-", "12-4", "1-34", "-234", "1234"],
@@ -28,6 +28,12 @@ _DISCRETE = {
     F_INT1: ["-1 oct", "-maj6th", "-min6th", "-4th", "unison", "min3rd", "maj3rd", "5th", "1oct"],
     F_INT2: ["-1 oct", "-5th", "-4th", "-maj2nd", "unison", "4th", "5th", "min7th", "1oct"],
     F_CONDITION: ["Wall", "Floor", "Free Field"],
+    F_KEY: ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"],
+    F_SHIFT: [f"{n} {d}" for d, ns in (("Down", ["Ninth", "Eighth", "Seventh", "Sixth", "Fifth", "Fourth", "Third",
+                                                 "Second"]),) for n in ns] + ["Unison"] +
+             [f"{n} Up" for n in ["Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth"]],
+    F_SCALE: ["Diatonic Major", "Natural Minor", "Pentatonic Major", "Pentatonic Minor", "Harmonic Minor",
+              "Melodic Minor", "Whole Tone", "Whole Diminished"],
     F_SPEAKER: ["Mono", "Stereo", "Stereo Wide"],
     F_WIDTH: ["Mono", "Stereo", "Stereo Wide"],
 }
@@ -81,6 +87,11 @@ class Layout:
         v = self.to_param(c)
         return int(round(v)) if self.is_int else round(v, 4)
 
+    @property
+    def typable(self) -> bool:
+        """Continuous values can be typed; notes, waves, keys etc. stay sliders."""
+        return not self.detents and self.fmt not in _DISCRETE
+
     def from_display(self, d: float):
         """Typed display value (e.g. 375 ms, 1200 Hz, -6 dB, 40 %) -> device value."""
         if self.curve in _EQ:
@@ -114,8 +125,8 @@ class Layout:
         if f == F_BPM:
             return f"{d:.1f} BPM"
         if f in _DISCRETE:
-            lst = _DISCRETE[f]
-            return lst[int(d + 0.5)] if 0 <= int(d + 0.5) < len(lst) else str(r)
+            lst, i = _DISCRETE[f], r + (8 if f == F_SHIFT else 0)     # shift: -8 .. +8
+            return lst[i] if 0 <= i < len(lst) else str(r)
         return str(r)
 
 

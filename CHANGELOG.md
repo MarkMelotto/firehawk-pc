@@ -2,38 +2,39 @@
 
 ## 1.3.0 — 2026-10-17
 
-- **SAVE** (or Ctrl+S): store the current tone on the amp, in the same preset or another one, with a new name.
-  The preset that gets overwritten is backed up first (`%LOCALAPPDATA%\FirehawkRemote\backups`).
-  The dialog starts at the current preset with its name filled in. The amp itself provides the tone that is
-  saved (never a preset rebuilt by this app, which an earlier test build did and which made the amp hang
-  when loading it); saving stops without writing if the amp switches preset meanwhile, and quitting during a save asks first.
-- Hardware tones are grouped like on the amp and the phone app: **Bank 1** with A–D, up to **Bank 32**; presets
-  are labelled 1A … 32D in the app and the command line.
-- `firehawk-cli.exe save 3C --name "My Tone"`; `firehawk-cli.exe dump 3C` shows a stored preset.
-- HD models (HD amps, drives, delays and reverbs) get the app's **HD** badge in the signal chain, the editor
-  header and the model picker.
-- Delay **Note** values were shown in reverse; they now run from a whole note down to 1/32, like on the amp.
-- Settings are shown like in the phone app: knobs in %, EQ frequencies in Hz/kHz with the app's frequency
-  curves, EQ gain in dB, gate and compressor thresholds in dB, delay time in ms, modulation speed in Hz, and
-  every effect's controls in the app's order (the EQ now shows all four gains). Taken from the official app
-  during **GET ALL EFFECTS…** — click it once more after updating.
-- **Footswitches:** put any block on FBV footswitch 1–5 for the current tone (FOOTSWITCH menu next to the
-  block's power button); tiles show which switch they're on. Save the tone to keep it.
-- **Type exact values:** click the value on the right of a slider (e.g. "545 ms"), or right-click the slider,
-  and type e.g. `375`, `1.2k` or `-6`; Enter applies, Esc cancels.
-- Delays and modulations get the app's **Tempo Sync** switch: on shows the note value, off shows the time in ms
-  (or speed in Hz). Before, the time slider did nothing while the delay was synced to a note.
-- Much faster: block settings and the signal chain are read in one go, and slider moves are sent without
-  waiting for each reply (the amp no longer trails behind through older values).
-- After saving, the saved preset is loaded back into the amp like the phone app does (without it the amp could
-  freeze on the next preset switch).
-- After every preset change the app reads the amp's new tone, like the phone app does (the amp could stop
-  responding to the floorboard while connected).
+### New
+- **Save tones to the amp** with **SAVE** (or Ctrl+S): keep or change the name and pick the preset. The dialog
+  starts at the current preset. The preset that gets overwritten is backed up first
+  (`%LOCALAPPDATA%\FirehawkRemote\backups`).
+- **Footswitch panel** at the bottom: click FS1–FS5 to choose which block that FBV switch turns on and off.
+  Blocks on a footswitch show "FS2" (etc.) on their tile. Save the tone to keep the assignment.
+- **Type exact values**: click the value on the right of a slider (e.g. "545 ms") or right-click the slider,
+  then type e.g. `375`, `1.2k` or `-6` (Enter applies, Esc cancels). Dragging from the value still slides.
+  Note values and other step sliders stay sliders.
+- **Tempo Sync** switch on delays and modulations, like the phone app: on uses the note value, off the time in
+  ms (or speed in Hz).
+- **HD** badge on HD models in the signal chain, the editor and the model picker.
+- Hardware tones grouped by bank like on the amp: **Bank 1** A–D … **Bank 32**; presets are labelled 1A–32D.
+- Command line: `firehawk-cli.exe save 3C --name "My Tone"` and `firehawk-cli.exe dump 3C`.
+
+### Improved
+- Values are shown like in the phone app: knobs in %, EQ frequencies in Hz/kHz on the app's frequency curves,
+  gains and thresholds in dB, delay time in ms, modulation speed in Hz, Smart Harmony key/shift/scale by name,
+  and every effect's controls in the app's order (the EQ now shows all four gains). This comes from the
+  official app: click **GET ALL EFFECTS…** once more after updating.
+- Much faster: the signal chain and block settings are read in one go, and slider moves go out immediately
+  (the amp no longer trails behind through older values).
+- Delay note values run from a whole note down to 1/32.
+- Connecting to an amp that is off or out of range gives up after a few seconds with a clear message and can be
+  retried straight away; a lost connection is shown, and closing the app never hangs. CONNECT becomes
+  DISCONNECT while connected.
 - The previous run's log is kept as `firehawk-debug.previous.log`.
-- Sending large messages now respects the amp's 512-byte receive window.
-- No more hanging when the amp is off or out of range: connecting gives up after a few seconds with a clear
-  message, the COM port is released so you can retry, a lost connection is detected and shown, and closing the
-  app never freezes. The CONNECT button becomes DISCONNECT while connected.
+
+### Fixed
+- The amp could stop responding to the floorboard after saving or switching presets while connected; the app
+  now follows the phone app's sync steps (reload after saving, read the tone after each preset change).
+- Moving the delay time did nothing while the delay was synced to a note.
+- Large messages (such as a saved preset) respect the amp's 512-byte receive window.
 
 ## 1.2.0 — 2026-10-11
 

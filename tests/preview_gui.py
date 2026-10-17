@@ -54,6 +54,8 @@ if __name__ == "__main__":
         app.after(9000, lambda: app.select(next(b for b in app.blocks if b.group == g)))
     if "--type" in sys.argv:            # screenshot helper: the type-a-value dialog on the 3rd slider row
         app.after(12000, lambda: app._type_value(app._row_geo[2][2]))
+    if "--fs" in sys.argv:              # screenshot helper: delay on FS2, reverb on FS4
+        app.after(12000, lambda: (app._fs_set(1, "fx3"), app.after(1500, lambda: app._fs_set(3, "reverb"))))
     if "--save" in sys.argv:            # screenshot helper: the save dialog
         app.after(9000, app.save_dialog)
     if "--effects" in sys.argv:         # screenshot helper: the Get all effects dialog
