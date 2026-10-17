@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import simpledialog, filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional
 
 from . import __version__, icons
@@ -114,6 +114,7 @@ class TunerWindow(tk.Toplevel):
             c.create_rectangle(12 + i * step + 3, y0, 12 + (i + 1) * step - 3, y1, fill=col, width=0)
 
 
+TEST_BUILD = " (test build j)"     # shown in the title while testing; empty for releases
 VALUE_W = 120         # right-hand part of a slider row: click it to type a value
 
 
@@ -217,7 +218,8 @@ class Worker(threading.Thread):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(f"Firehawk Remote {__version__}")
+        self.title(f"Firehawk Remote {__version__}{TEST_BUILD}")
+        self.report_callback_exception = lambda *exc: log.error("UI error", exc_info=exc)
         self.geometry("1180x720")
         self.minsize(980, 600)
         self.configure(bg=BG)
@@ -296,7 +298,7 @@ class App(tk.Tk):
         self.lst = tk.Listbox(wrap, bg=PANEL, fg="#e6e6e6", selectbackground=HEADER, selectforeground=TEXT,
                               highlightthickness=0, bd=0, activestyle="none", font=(FONT, 11))
         self.lst.pack(side="left", fill="both", expand=True)
-        rea = tk.Label(left, text=f"v{__version__}  ·  built with REA", fg="#6f7f9f", bg=PANEL, font=(FONT, 8),
+        rea = tk.Label(left, text=f"v{__version__}{TEST_BUILD}  ·  built with REA", fg="#6f7f9f", bg=PANEL, font=(FONT, 8),
                        cursor="hand2", anchor="w")
         rea.pack(side="bottom", fill="x", padx=12, pady=(0, 8))
         rea.bind("<Button-1>", lambda e: __import__("webbrowser").open("https://github.com/morluto/rea"))
@@ -354,6 +356,8 @@ class App(tk.Tk):
         self.rows.bind("<ButtonRelease-1>", self._row_release)
         self.rows.bind("<MouseWheel>", lambda e: self.rows.yview_scroll(-1 if e.delta > 0 else 1, "units"))
         self.rows.bind("<Control-MouseWheel>", self._row_wheel)
+        self.rows.bind("<Button-3>", self._row_type)               # right-click a slider: type a value
+        self.rows.bind("<Motion>", self._row_hover)
         self._row_geo: List[tuple] = []        # (y0, y1, Param)
         self._drag: Optional[Param] = None
 
@@ -540,17 +544,48 @@ class App(tk.Tk):
         self._drag = p
         self._send(self.sel, p, self._value_at(p, ev.x))
 
+    def _row_type(self, ev):
+        p = self._hit(ev)
+        if p and self.sel and p.vtype != 2 and p.sid != "@mic":
+            self._type_value(p)
+
+    def _row_hover(self, ev):
+        over = ev.x > max(self.rows.winfo_width(), 300) - VALUE_W and self._hit(ev) is not None
+        self.rows.config(cursor="xterm" if over else "")
+
     def _type_value(self, p: Param):
+        """Edit the value in place: an entry over the value text; Enter applies, Esc cancels."""
         b = self.sel
-        cur = fmt(p, b.values.get(p.sid, p.default) if b.values.get(p.sid, p.default) is not None else 0)
-        txt = simpledialog.askstring("Set value", f"{p.name} (now {cur}):", parent=self, initialvalue=cur)
-        if txt is None:
+        row = next(((y0, y1) for y0, y1, q in self._row_geo if q is p), None)
+        if not b or row is None:
             return
-        v = parse_value(p, txt)
-        if v is None:
-            messagebox.showerror("Set value", f"'{txt}' is not a number.")
-            return
-        self._send(b, p, v)
+        v = b.values.get(p.sid, p.default)
+        cur = fmt(p, v if v is not None else 0)
+        c = self.rows
+        w = max(c.winfo_width(), 300)
+        ent = tk.Entry(c, bg="#0d0d0d", fg=TEXT, insertbackground=TEXT, relief="flat", justify="right",
+                       font=(FONT, 13), highlightthickness=1, highlightcolor=b.look.color)
+        ent.insert(0, cur)
+        ent.select_range(0, "end")
+        win = c.create_window(w - 8, (row[0] + row[1]) // 2, window=ent, anchor="e", width=150, height=32)
+
+        def close(_e=None):
+            c.delete(win)
+            ent.destroy()
+
+        def apply(_e=None):
+            txt = ent.get()
+            val = parse_value(p, txt)
+            close()
+            if val is None:
+                self.lbl_status.config(text=f"'{txt}' is not a number")
+                return
+            self._send(b, p, val)
+        ent.bind("<Return>", apply)
+        ent.bind("<KP_Enter>", apply)
+        ent.bind("<Escape>", close)
+        ent.bind("<FocusOut>", close)
+        ent.focus_set()
 
     def _row_drag(self, ev):
         if self._drag and self.sel:

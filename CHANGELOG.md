@@ -19,8 +19,8 @@
   during **GET ALL EFFECTS…** — click it once more after updating.
 - **Footswitches:** put any block on FBV footswitch 1–5 for the current tone (FOOTSWITCH menu next to the
   block's power button); tiles show which switch they're on. Save the tone to keep it.
-- **Type exact values:** click the value on the right of a slider (e.g. "545 ms") and type e.g. `375`, `1.2k`
-  or `-6`.
+- **Type exact values:** click the value on the right of a slider (e.g. "545 ms"), or right-click the slider,
+  and type e.g. `375`, `1.2k` or `-6`; Enter applies, Esc cancels.
 - Delays and modulations get the app's **Tempo Sync** switch: on shows the note value, off shows the time in ms
   (or speed in Hz). Before, the time slider did nothing while the delay was synced to a note.
 - Much faster: block settings and the signal chain are read in one go, and slider moves are sent without

@@ -52,6 +52,8 @@ if __name__ == "__main__":
     if "--select" in sys.argv:          # screenshot helper: select a block, e.g. --select eq
         g = sys.argv[sys.argv.index("--select") + 1]
         app.after(9000, lambda: app.select(next(b for b in app.blocks if b.group == g)))
+    if "--type" in sys.argv:            # screenshot helper: the type-a-value dialog on the 3rd slider row
+        app.after(12000, lambda: app._type_value(app._row_geo[2][2]))
     if "--save" in sys.argv:            # screenshot helper: the save dialog
         app.after(9000, app.save_dialog)
     if "--effects" in sys.argv:         # screenshot helper: the Get all effects dialog
