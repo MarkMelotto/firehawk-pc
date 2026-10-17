@@ -145,6 +145,9 @@ bytes}`, 6 array `{count, count×u32}`, 7 symbol index. Directive keys: `0x80000
   amp to serialise its edit buffer (`GetPresetFile(0xFFFFFFFF)`), sets the name and uploads it.
 - **Don't** upload a preset rebuilt from editor values (stored file with models swapped and `…State` lists rebuilt
   from the app's model data): the amp accepts it, but hung when switching presets afterwards and needed a restart.
+- After saving, the phone app loads the preset back: `GetPresetFile(idx)` → `SetPresetFile(0xFFFFFFFF, data)`
+  (`loadPresetFromDevice`; it never uses LoadHardwarePreset for this). Skipping that step after writing the
+  active preset left a Firehawk 1500 frozen on the next floorboard preset switch.
 - A `SetPresetFile` cut off half-way (app killed mid-upload) can leave the librarian waiting for the rest; switch
   the amp off and on.
 

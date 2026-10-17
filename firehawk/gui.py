@@ -940,9 +940,7 @@ class App(tk.Tk):
         if win.winfo_exists():
             win.destroy()
         self._fill_presets(self.preset_names)
-        if idx != self.current_preset:
-            self.worker.submit(self._select_preset, idx)       # continue on the preset just written
-        self._mark_preset(idx)
+        self._mark_preset(idx)                                 # the amp now plays the preset just written
         self.lbl_status.config(text=f"Saved to preset {preset_label(idx)}")
 
     # ------------------------------------------------------------------ tuner

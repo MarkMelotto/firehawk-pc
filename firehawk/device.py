@@ -257,6 +257,13 @@ class Firehawk:
         say("Checking…")
         if self.librarian.get_preset_file(target) != out:
             log.warning("read-back of preset %s differs from what was written", preset_label(target))
+        # like the phone app (saveCurrentToHardware -> loadHardwarePreset -> loadPresetFromDevice): load the
+        # saved preset back into the edit buffer. Without this a Firehawk 1500 froze on the next preset switch.
+        say("Loading the saved preset…")
+        st = self.librarian.set_preset_file(self.librarian.EDIT_BUFFER, out)
+        if st < 0:
+            log.warning("reloading the edit buffer after saving failed (%d)", st)
+        self.current_preset = target
         return [f"{how} -> {preset_label(target)}", f"name: {old!r} -> {name or old!r}"]
 
     def _patched_copy(self, target: int, catalog, say) -> list:

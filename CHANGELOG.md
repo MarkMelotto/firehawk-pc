@@ -17,6 +17,8 @@
   curves, EQ gain in dB, gate and compressor thresholds in dB, delay time in ms, modulation speed in Hz, and
   every effect's controls in the app's order (the EQ now shows all four gains). Taken from the official app
   during **GET ALL EFFECTS…** — click it once more after updating.
+- After saving, the saved preset is loaded back into the amp like the phone app does (without it the amp could
+  freeze on the next preset switch).
 - After every preset change the app reads the amp's new tone, like the phone app does (the amp could stop
   responding to the floorboard while connected).
 - The previous run's log is kept as `firehawk-debug.previous.log`.

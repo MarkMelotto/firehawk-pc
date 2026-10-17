@@ -106,6 +106,7 @@ dev.preset_files = {0: tone('Clean'), 2: tone('Lead')}
 dev.preset_files[0xFFFFFFFF] = tone('Live Tone')
 assert fh.save_preset(3, 'Edited', None)
 assert pf.preset_name(pf.parse(dev.preset_files[3])) == 'Edited'
+assert dev.preset_files[0xFFFFFFFF] == dev.preset_files[3] and fh.current_preset == 3   # reloaded like the app
 assert pf.serialize([e for e in pf.parse(dev.preset_files[3]) if e.key != pf.NAME_KEY]) == \
        pf.serialize([e for e in pf.parse(tone('x')) if e.key != pf.NAME_KEY])
 # switching presets mid-save aborts without writing
